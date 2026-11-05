@@ -1,0 +1,13 @@
+name: Bootstrap shell checks
+on:
+  push:
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: bash -n bootstrap.sh
+      - name: ShellCheck
+        run: shellcheck -S warning bootstrap.sh
