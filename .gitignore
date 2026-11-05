@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+*.epub
+*.pdf
+*.docx
+*.srt
+*.sqlite
+*.db
+*.log
+.venv/
+data/
+logs/
+translated_files/
+ollama-models/
