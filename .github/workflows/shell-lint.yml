@@ -15,3 +15,5 @@ jobs:
         run: python3 -m py_compile audit_epub.py
       - name: Synthetic EPUB audit tests
         run: python3 -m unittest discover -s tests -v
+      - name: End-to-end Basic Auth login test
+        run: bash tests/test_nginx_auth.sh
