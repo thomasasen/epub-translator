@@ -104,9 +104,28 @@ tail -n 100 /workspace/epub-translator/logs/ollama.log
 
 Bei einer 502-Antwort in der Weboberfläche prüfen, ob der Start vollständig durchgelaufen ist. Bei zu wenig VRAM ein kleineres Modell, kleinere Kontextlänge oder eine größere GPU wählen. Bei fehlenden Dateien den Mount-Pfad und die Persistenz des Volumes prüfen.
 
-## 7. Stand der Validierung
+## 7. Qualitätssicherung nach Red-Team-Review
 
-Eine [GitHub-Actions-Prüfung](.github/workflows/shell-lint.yml) kontrolliert die Bash-Syntax und ShellCheck. **Ein Live-Test auf einem RunPod-Pod wurde noch nicht durchgeführt**; insbesondere GPU-Erkennung, WebSocket, Passwortanmeldung und eine vollständige EPUB-Übersetzung müssen dort getestet werden.
+Für hochwertige Übersetzungen genügt es nicht, eine gute GPU und ein großes Modell zu verwenden. Das Repository enthält deshalb eine ausführliche [**Qualitätsstrategie und Red-Team-Auswertung**](QUALITY.md).
+
+**Vor der Vollübersetzung:** Vergleiche mehrere repräsentative Kapitel mit demselben Glossar und identischen Einstellungen. Bewerte Bedeutungstreue, Vollständigkeit, natürliches Deutsch, Konsistenz und Erzählstil. Die erste Auswahl `gemma4:31b` ist ein Ausgangspunkt und kein garantierter Sieger.
+
+**Nach der Übersetzung:** Das Skript `audit_epub.py` ist auf RunPod unter `/workspace/epub-translator/audit_epub.py` verfügbar. Es prüft EPUB-Struktur, Kapitel, Absätze, Links, Bilder und auffällig unveränderte Textblöcke. Ein Beispiel:
+
+```bash
+find /workspace/epub-translator -iname '*.epub'
+python3 /workspace/epub-translator/audit_epub.py \
+  "/pfad/zum/original.epub" "/pfad/zur/uebersetzung.epub" \
+  --json "/workspace/epub-translator/translated_files/audit.json"
+```
+
+Bei kritischen Abweichungen meldet die Prüfung einen Fehlercode. Warnungen müssen überprüft werden; optional behandelt `--strict` auch Warnungen als Fehler. **Diese Prüfung bewertet keine Übersetzungssemantik.** Auch einen EPUB-Reader-Test und manuelle Stichproben durchführen.
+
+Nach dem Ollama-Modelldownload startet das Bootstrapskript nun eine echte Test-Inferenz und zeigt bei möglichem CPU-Offloading eine Warnung. Dadurch entdecken wir Modell-Ladeprobleme, bevor du ein ganzes Buch startest.
+
+## 8. Stand der Validierung
+
+Eine [GitHub-Actions-Prüfung](.github/workflows/shell-lint.yml) kontrolliert Bash-Syntax, ShellCheck sowie synthetische EPUB-Integritätstests. **Ein Live-Test auf einem RunPod-Pod wurde noch nicht durchgeführt**; insbesondere GPU-Erkennung, WebSocket, Passwortanmeldung und eine vollständige EPUB-Übersetzung müssen dort getestet werden.
 
 **Quellen:** [TranslateBooksWithLLMs](https://github.com/hydropix/TranslateBooksWithLLMs) · [Upstream-Dokumentation](https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/PROVIDERS.md) · [RunPod-Beispieltemplate](https://github.com/runpod-workers/pod-template).
 
