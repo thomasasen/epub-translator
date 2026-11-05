@@ -85,6 +85,14 @@ Der RunPod-Webproxy ist aus dem Internet erreichbar. Deshalb lauscht **Nginx mit
 
 Der Zugriff über den RunPod-HTTPS-Proxy ist TLS-geschützt. Nginx verlangt das Passwort auch für API-, Upload- und WebSocket-Zugriffe. Dies ist für einen privaten Einzelbenutzer-Pod ausgelegt, nicht für eine öffentliche Mehrbenutzer-Anwendung.
 
+## GPU-Startfehler: `GPU VRAM unreadable`
+
+Das ursprüngliche Bootstrapskript brach nach einer einzigen `nvidia-smi`-Abfrage ab. Ab der überarbeiteten Version wartet es **bis zu ungefähr einer Minute** auf die GPU und gibt im Fehlerfall die tatsächlichen NVIDIA-Meldungen, `nvidia-smi -L`, verfügbare Gerätedateien und den Sichtbarkeitsstatus aus. **Es erfindet keinen VRAM-Wert und startet kein lokales 31B-Modell auf CPU.**
+
+Die CUDA-Meldung beim Start beweist nur, dass das Image CUDA enthält, nicht dass der Pod eine GPU hat. Falls im neuen Log `No devices were found`, `Failed to initialize NVML` oder `Visible NVIDIA devices: <none>` steht, prüfe in **RunPod → Pod Details**, ob mindestens **eine GPU zugewiesen** ist. Nach dem Neustart eines angehaltenen Pods kann RunPod unter Umständen nur den Start mit **0 GPUs** anbieten. In diesem Fall einen GPU-Pod neu bereitstellen oder eine passende GPU-Verfügbarkeit abwarten. Details: [RunPod – Zero GPU Pods on restart](https://docs.runpod.io/pods/troubleshooting/zero-gpus).
+
+Wenn der Pod nach einer Fehlermeldung immer wieder neu startet, ihn im Dashboard stoppen, statt unnötig GPU-Zeit zu verbrauchen. Das Bootstrapskript muss nicht manuell ausgetauscht werden; der im Template hinterlegte `main/bootstrap.sh`-Link lädt die Korrektur beim nächsten Start.
+
 ## 6. Fehlerdiagnose im RunPod-Terminal
 
 ```bash
