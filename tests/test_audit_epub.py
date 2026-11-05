@@ -72,7 +72,7 @@ class AuditTests(unittest.TestCase):
         make_epub(self.target, [""])
         report = audit(self.source, self.target)
         self.assertFalse(report["ok"])
-        self.assertTrue(any("is empty" in msg for msg in report["critical"]))
+        self.assertTrue(any("blank after translation" in msg or "major omission" in msg for msg in report["critical"]))
 
     def test_unchanged_passage_warns(self):
         make_epub(self.source, [self.english])
@@ -86,6 +86,21 @@ class AuditTests(unittest.TestCase):
         make_epub(self.target, [self.german], with_link=False)
         report = audit(self.source, self.target)
         self.assertTrue(any("hyperlink count" in msg for msg in report["warnings"]))
+
+    def test_missing_image_asset_is_critical(self):
+        make_epub(self.source, [self.english])
+        make_epub(self.target, [self.german], images=1)
+        # Remove image payload but keep the OPF manifest reference.
+        with zipfile.ZipFile(self.target) as original_zip:
+            contents = {entry.filename: original_zip.read(entry.filename)
+                        for entry in original_zip.infolist()
+                        if not entry.filename.endswith("img0.png")}
+        with zipfile.ZipFile(self.target, "w") as modified_zip:
+            for name, value in contents.items():
+                modified_zip.writestr(name, value)
+        report = audit(self.source, self.target)
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("missing files" in msg for msg in report["critical"]))
 
     def test_malformed_epub_is_critical(self):
         self.source.write_bytes(b"not an epub")
