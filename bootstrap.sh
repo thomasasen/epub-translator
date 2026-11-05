@@ -157,6 +157,10 @@ unset EPUB_PASSWORD
 # RunPod ships its own nginx.conf, which may NOT include conf.d/*.conf.
 # Use a completely separate nginx instance and PID file for the EPUB proxy.
 cat >/etc/nginx/epub-translator.conf <<'NGINX'
+# Workers must be in the group allowed to read /etc/nginx/.epub-users.
+# Without this directive, Nginx defaults to 'nobody' and password login
+# can return HTTP 500 although unauthenticated requests return HTTP 401.
+user www-data;
 worker_processes 1;
 pid /run/epub-translator-nginx.pid;
 events { worker_connections 1024; }
