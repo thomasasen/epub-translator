@@ -55,6 +55,13 @@ def parse_epub(path: Path) -> dict:
             location = posixpath.normpath(posixpath.join(posixpath.dirname(opf_path), href))
             if identifier:
                 manifest[identifier] = {"file": location, "type": item.attrib.get("media-type", "")}
+        # All manifested assets must physically exist, not just the XHTML spine.
+        existing = set(archive.namelist())
+        missing_assets = sorted(entry["file"] for entry in manifest.values()
+                                if entry["file"] not in existing)
+        if missing_assets:
+            raise ValueError(
+                f"Manifest references missing files: {', '.join(missing_assets[:5])}")
         spine = package.find(".//o:spine", NS)
         if spine is None:
             raise ValueError("Missing OPF spine")
