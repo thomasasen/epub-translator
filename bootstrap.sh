@@ -40,6 +40,15 @@ python3 -m py_compile "$BASE/audit_epub.py"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends curl ca-certificates git python3 python3-venv python3-pip nginx apache2-utils >/dev/null
+
+# Preserve RunPod's own SSH/Jupyter startup. Without this, overriding Docker
+# CMD disables those services. Never pass EPUB_PASSWORD to /start.sh because
+# the default startup writes environment variables into /etc/rp_environment.
+if [[ -x /start.sh ]]; then
+  log "Starting RunPod platform services in background (without EPUB_PASSWORD) ..."
+  env -u EPUB_PASSWORD /start.sh >"$LOG/runpod-services.log" 2>&1 &
+  PID_RUNPOD=$!
+fi
 if ! command -v ollama >/dev/null; then
   curl -fsSL https://ollama.com/install.sh -o /tmp/ollama-install.sh
   sh /tmp/ollama-install.sh
@@ -50,7 +59,7 @@ ollama serve >"$LOG/ollama.log" 2>&1 &
 PID_OLLAMA=$!
 cleanup() {
   trap - EXIT INT TERM
-  for p in "${PID_WEB:-}" "${PID_APP:-}" "${PID_OLLAMA:-}"; do
+  for p in "${PID_WEB:-}" "${PID_APP:-}" "${PID_OLLAMA:-}" "${PID_RUNPOD:-}"; do
     if [[ -n "$p" ]]; then kill "$p" 2>/dev/null || true; fi
   done
   wait 2>/dev/null || true
@@ -135,27 +144,36 @@ printf '%s\n' "$EPUB_PASSWORD" | htpasswd -i -c -B /etc/nginx/.epub-users "$EPUB
 chown root:www-data /etc/nginx/.epub-users
 chmod 640 /etc/nginx/.epub-users
 unset EPUB_PASSWORD
-cat >/etc/nginx/conf.d/epub.conf <<'NGINX'
-server {
-    listen 3000;
-    server_name _;
-    client_max_body_size 150m;
-    auth_basic "EPUB Translator";
-    auth_basic_user_file /etc/nginx/.epub-users;
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 900s;
-        proxy_send_timeout 900s;
-        proxy_buffering off;
+# RunPod ships its own nginx.conf, which may NOT include conf.d/*.conf.
+# Use a completely separate nginx instance and PID file for the EPUB proxy.
+cat >/etc/nginx/epub-translator.conf <<'NGINX'
+worker_processes 1;
+pid /run/epub-translator-nginx.pid;
+events { worker_connections 1024; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    server {
+        listen 3000;
+        server_name _;
+        client_max_body_size 150m;
+        auth_basic "EPUB Translator";
+        auth_basic_user_file /etc/nginx/.epub-users;
+        location / {
+            proxy_pass http://127.0.0.1:5000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_read_timeout 900s;
+            proxy_send_timeout 900s;
+            proxy_buffering off;
+        }
     }
 }
 NGINX
-nginx -t >/dev/null 2>&1 || die "nginx configuration failed."
+nginx -t -c /etc/nginx/epub-translator.conf >/dev/null 2>&1 || die "nginx configuration failed."
 
 .venv/bin/python translation_api.py >"$LOG/translator.log" 2>&1 &
 PID_APP=$!
@@ -167,7 +185,7 @@ for _ in $(seq 1 90); do
 done
 ((ready == 1)) || die "Translation app failed healthcheck."
 
-nginx -g 'daemon off;' >"$LOG/nginx.log" 2>&1 &
+nginx -c /etc/nginx/epub-translator.conf -g 'daemon off;' >"$LOG/nginx.log" 2>&1 &
 PID_WEB=$!
 sleep 2
 kill -0 "$PID_WEB" 2>/dev/null || die "nginx crashed."
