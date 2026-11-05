@@ -1,9 +1,9 @@
-name: Bootstrap shell checks
+name: Bootstrap and EPUB audit tests
 on:
   push:
   pull_request:
 jobs:
-  lint:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -11,3 +11,7 @@ jobs:
         run: bash -n bootstrap.sh
       - name: ShellCheck
         run: shellcheck -S warning bootstrap.sh
+      - name: Compile audit
+        run: python3 -m py_compile audit_epub.py
+      - name: Synthetic EPUB audit tests
+        run: python3 -m unittest discover -s tests -v
