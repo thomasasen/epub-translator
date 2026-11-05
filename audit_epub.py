@@ -72,6 +72,7 @@ def parse_epub(path: Path) -> dict:
             except (KeyError, ET.ParseError) as exc:
                 raise ValueError(f"Invalid XHTML in {entry['file']}: {exc}") from exc
             blocks = []
+            block_nodes = []
             counts = Counter()
             anchor_ids = set()
             hrefs = []
@@ -84,6 +85,7 @@ def parse_epub(path: Path) -> dict:
                     hrefs.append(elem.attrib["href"])
                 if name in BLOCK:
                     text = normalize("".join(elem.itertext()))
+                    block_nodes.append((name, text))
                     if text:
                         blocks.append(text)
             chapter_text = normalize(" ".join(root.itertext()))
@@ -91,6 +93,7 @@ def parse_epub(path: Path) -> dict:
                 "file": entry["file"],
                 "characters": len(chapter_text),
                 "blocks": blocks,
+                "block_nodes": block_nodes,
                 "counts": counts,
                 "ids": anchor_ids,
                 "hrefs": hrefs,
@@ -108,6 +111,7 @@ def audit(source: Path, translated: Path) -> dict:
         original, output = parse_epub(source), parse_epub(translated)
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
         result["critical"].append(f"Cannot validate EPUB structure: {exc}")
+        result["ok"] = False
         return result
 
     src_ch = original["chapters"]
@@ -123,12 +127,23 @@ def audit(source: Path, translated: Path) -> dict:
             result["critical"].append(f"Chapter {i}: translated chapter is empty")
         if src["characters"] > 200:
             ratio = dst["characters"] / src["characters"]
+            if ratio < .15:
+                result["critical"].append(
+                    f"Chapter {i}: likely major omission, only {ratio:.0%} of source length remains")
             if ratio < .55 or ratio > 2.1:
                 result["warnings"].append(
                     f"Chapter {i}: suspicious character-length ratio {ratio:.2f} "
                     f"({src['characters']} -> {dst['characters']}); manually verify")
         else:
             ratio = None
+        # Detect completely blank translated paragraphs even when headings survive.
+        if len(src["block_nodes"]) == len(dst["block_nodes"]):
+            for index, ((source_kind, source_text), (dest_kind, dest_text)) in enumerate(
+                zip(src["block_nodes"], dst["block_nodes"]), 1
+            ):
+                if source_kind == dest_kind and len(source_text) >= 80 and not dest_text:
+                    result["critical"].append(
+                        f"Chapter {i}: text block {index} (<{source_kind}>) is blank after translation")
         for kind in ("p", "li", "blockquote", "td", "th", "a", "img", "image", "sup"):
             if src["counts"][kind] != dst["counts"][kind]:
                 result["warnings"].append(
