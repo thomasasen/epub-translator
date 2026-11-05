@@ -32,6 +32,11 @@ fi
 mkdir -p "$BASE" "$LOG" "$BASE/ollama-models" "$BASE/translated_files"
 log "GPU VRAM=$VRAM MiB, Ollama model=$MODEL, context=$CTX"
 
+# Ensure the offline EPUB audit is present on the persistent volume.
+curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/main/audit_epub.py \
+  -o "$BASE/audit_epub.py"
+python3 -m py_compile "$BASE/audit_epub.py"
+
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends curl ca-certificates git python3 python3-venv python3-pip nginx apache2-utils >/dev/null
@@ -64,6 +69,40 @@ done
 if ! ollama show "$MODEL" >/dev/null 2>&1; then
   log "Downloading $MODEL to persistent volume ..."
   ollama pull "$MODEL"
+fi
+
+# Red-team check: force an actual inference instead of assuming a download means
+# the model loads. Warn when it falls back to slow CPU offload.
+log "Verifying GPU inference for $MODEL (first model load may take time) ..."
+if ! EPUB_MODEL_NAME="$MODEL" EPUB_NUM_CTX="$CTX" python3 - <<'PY'
+import json
+import os
+import urllib.request
+payload = {
+    "model": os.environ["EPUB_MODEL_NAME"],
+    "prompt": "Translate exactly into German: The door is open.",
+    "stream": False,
+    "keep_alive": "30m",
+    "options": {"num_ctx": int(os.environ["EPUB_NUM_CTX"])},
+}
+request = urllib.request.Request(
+    "http://127.0.0.1:11434/api/generate",
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+)
+with urllib.request.urlopen(request, timeout=600) as response:
+    result = json.load(response)
+if not result.get("response", "").strip():
+    raise SystemExit("Ollama returned an empty inference")
+print("Ollama inference OK")
+PY
+then
+  die "Model could not generate a response on this Pod. Check VRAM and $LOG/ollama.log"
+fi
+log "Model residency:"
+ollama ps || true
+if ! ollama ps | grep -q '100% GPU'; then
+  log "WARNING: model is not reported as 100% GPU-resident. Performance may be much worse."
 fi
 
 if [[ ! -d "$APP/.git" ]]; then
