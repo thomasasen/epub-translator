@@ -153,6 +153,10 @@ export PARALLEL_TRANSLATIONS=1 REQUEST_TIMEOUT=900 DEBUG_MODE=false
 printf '%s\n' "$EPUB_PASSWORD" | htpasswd -i -c -B /etc/nginx/.epub-users "$EPUB_USERNAME" >/dev/null
 chown root:www-data /etc/nginx/.epub-users
 chmod 640 /etc/nginx/.epub-users
+# Invariant: nginx worker www-data must be able to read its password file.
+# A mismatch fails Basic Auth with HTTP 500, not 401, after credentials are sent.
+su -s /bin/sh -c 'test -r /etc/nginx/.epub-users' www-data ||
+  die "Nginx worker www-data cannot read the password file."
 unset EPUB_PASSWORD
 # RunPod ships its own nginx.conf, which may NOT include conf.d/*.conf.
 # Use a completely separate nginx instance and PID file for the EPUB proxy.
