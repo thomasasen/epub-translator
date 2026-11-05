@@ -13,9 +13,19 @@ die() { log "ERROR: $*"; exit 1; }
 [[ "$EPUB_USERNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || die "Invalid EPUB_USERNAME."
 [[ "$EPUB_PASSWORD" =~ ^.{12,}$ ]] || die "EPUB_PASSWORD needs >= 12 characters."
 [[ -d /workspace ]] || die "Set RunPod volume mount path to /workspace."
-command -v nvidia-smi >/dev/null || die "GPU image required (nvidia-smi missing)."
-VRAM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | sort -nr | head -1 | tr -d '[:space:]')
-[[ "$VRAM" =~ ^[0-9]+$ ]] || die "GPU VRAM unreadable."
+command -v python3 >/dev/null || die "Base image needs python3."
+command -v curl >/dev/null || die "Base image needs curl."
+
+# GPU assignment may appear shortly after a container starts. Probe it multiple
+# times, retaining the actual nvidia-smi stdout/stderr on failure. Never infer
+# available GPU memory from the CUDA banner or fall back to CPU silently.
+PROBE_SCRIPT=/tmp/epub-probe-gpu.py
+curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/main/scripts/probe_gpu.py \
+  -o "$PROBE_SCRIPT"
+if ! VRAM=$(python3 "$PROBE_SCRIPT" --attempts 12 --delay 5); then
+  die "GPU probe failed. Inspect the GPU diagnostics above and verify a GPU is attached to the RunPod pod."
+fi
+[[ "$VRAM" =~ ^[0-9]+$ ]] || die "GPU probe produced invalid output: $VRAM."
 if [[ -n "${EPUB_MODEL:-}" ]]; then
   MODEL=$EPUB_MODEL
   CTX=${EPUB_CONTEXT:-8192}
