@@ -63,6 +63,11 @@ def _dataset_row() -> tuple[dict, str]:
             continue
         text = entry.get("text", "")
         audio = entry.get("audio") or {}
+        # HF Datasets Server represents Audio either as a list of media
+        # variants (current TV-44kHz-Full API) or a legacy single dict.
+        if isinstance(audio, list):
+            audio = next((candidate for candidate in audio
+                          if isinstance(candidate, dict) and candidate.get("src")), {})
         if not isinstance(audio, dict):
             continue
         src = audio.get("src")
