@@ -33,6 +33,7 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <div class="field"><label for="speed">Sprechtempo</label><select id="speed"><option value="0.9">Ruhig · 0,9×</option><option value="1" selected>Natürlich · 1,0×</option><option value="1.1">Zügig · 1,1×</option></select></div></div>
 <div class="grid"><div class="field"><label for="chars">Segmentlänge</label><select id="chars"><option value="300">300 Zeichen</option><option value="400" selected>400 Zeichen</option><option value="600">600 Zeichen</option></select></div>
 <div class="field"><label for="model">TTS-Modell</label><select id="model"><option value="qwen-customvoice">Qwen3-TTS 1.7B</option></select></div></div>
+<div class="field"><label for="quality">Qualitätsprofil</label><select id="quality"><option value="high">Hochwertig (Standard)</option><option value="careful">Sorgfältig (kürzere Segmente)</option></select></div>
 <div class="field"><label for="instruction">Sprechanweisung</label><input id="instruction"></div>
 <div class="grid"><div><label><input id="captions" style="width:auto" type="checkbox"> Bildunterschriften vorlesen</label></div><div><label><input id="notes" style="width:auto" type="checkbox"> Fußnoten vorlesen</label></div></div>
 <div class="buttons"><button id="save">Einstellungen übernehmen</button></div>
@@ -46,13 +47,13 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <p class="hint">Zuerst eine repräsentative Probe erzeugen und anhören. Die Vollproduktion wird erst nach ausdrücklicher Freigabe entsperrt.</p>
 <div class="buttons"><button id="preview" class="primary">Sprachprobe erzeugen</button><button id="approve">Sprachprobe freigeben</button></div>
 <audio id="audio" controls preload="none"></audio>
-<div class="buttons"><button id="run" class="primary">Ganzes Hörbuch erzeugen</button><button id="pause">Nach Segment pausieren</button><button id="resume">Fortsetzen</button></div>
+<div class="buttons"><button id="run" class="primary">Ganzes Hörbuch erzeugen</button><button id="pause">Nach Segment pausieren</button><button id="cancel">Auftrag abbrechen</button><button id="resume">Fortsetzen</button></div>
 <div class="field"><label for="segment">Fehlerhaftes Segment (z.B. 0001-00002)</label><input id="segment" placeholder="0001-00002"></div><button id="rerender">Segment erneut generieren</button>
 </section>
 <section class="panel full"><h2>5. Status und Export</h2>
 <div id="booktitle" class="hint">Noch kein Projekt gewählt.</div><progress id="progress" value="0" max="1"></progress><div id="status"></div>
 <div id="message" role="status" aria-live="polite"></div>
-<div class="buttons"><a class="button" id="m4b" href="#" download>Vollständiges M4B</a><a class="button" id="qualityFile" href="#" download>Qualitätsbericht als JSON</a><button id="qa">Qualität prüfen</button></div>
+<div class="buttons"><a class="button" id="m4b" href="#" download>Vollständiges M4B</a><a class="button" id="qualityFile" href="#" download>Qualitätsbericht als JSON</a><button id="qa">Qualität prüfen</button><button id="export">M4B nach Korrekturen neu erstellen</button></div>
 <div class="grid"><div><h2>Kapitel</h2><ol id="chapters"></ol></div><div><h2>Wichtige Hinweise</h2>
 <p class="hint">Der Zugriff ist ohne zusätzliches Passwort möglich. Jeder mit dem RunPod-Link kann diese Oberfläche und ihre Dateien öffnen. Dienste für TTS und Übersetzung bleiben lokal.</p>
 <p class="hint">Die Qualitätssicherung meldet Verdachtsfälle; eine manuelle Hörprüfung bleibt notwendig. Sprachsynthese darf keine laufende Übersetzung unterbrechen.</p></div></div></section>
@@ -60,6 +61,7 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <script>
 "use strict";
 var current = null;
+var editDirty = false;
 function el(id){return document.getElementById(id);}
 function message(text){el("message").textContent=text;}
 async function request(path,options){
@@ -83,11 +85,13 @@ function render(s){
   el("booktitle").textContent=s.title+" · "+s.author+" · geschätzt "+s.estimated_minutes+" Minuten Audio";
   el("status").textContent="Status: "+s.status+"\\nFortschritt: "+(s.done||0)+" / "+(s.total||s.segments.length)+" Segmente\\nHinweise/Auslassungen: "+s.exclusions.length+"\\n"+(s.errors||[]).join("\\n");
   el("progress").max=s.total||1;el("progress").value=s.done||0;
-  el("voice").value=s.config.speaker;el("speed").value=String(s.config.speed);
-  el("chars").value=String(s.config.max_chars);
-  el("instruction").value=s.config.instruction;
-  el("captions").checked=s.config.captions;el("notes").checked=s.config.notes;
-  if(document.activeElement!==el("glossary"))el("glossary").value=JSON.stringify(s.glossary,null,2);
+  if(!editDirty){
+    el("voice").value=s.config.speaker;el("speed").value=String(s.config.speed);
+    el("chars").value=String(s.config.max_chars);el("quality").value=s.config.quality;
+    el("instruction").value=s.config.instruction;
+    el("captions").checked=s.config.captions;el("notes").checked=s.config.notes;
+    el("glossary").value=JSON.stringify(s.glossary,null,2);
+  }
   el("chapters").replaceChildren();s.chapters.forEach(function(ch){
     var li=document.createElement("li");li.textContent=ch.title+" ("+ch.characters+" Zeichen) ";
     var a=document.createElement("a");a.textContent="MP3";a.href="/audiobook/api/books/"+current+"/download/chapter?chapter="+ch.id;
@@ -97,20 +101,23 @@ function render(s){
   el("approve").disabled=s.status!=="preview_ready";
   el("run").disabled=s.approved_fingerprint!==s.configuration_sha256;
   el("resume").disabled=s.approved_fingerprint!==s.configuration_sha256;
-  if(s.status==="preview_ready")el("audio").src="/audiobook/api/books/"+current+"/download/preview";
+  if(["preview_ready","approved","completed","partial_ready"].includes(s.status)){
+    var previewUrl="/audiobook/api/books/"+current+"/download/preview";
+    if(el("audio").getAttribute("src")!==previewUrl)el("audio").setAttribute("src",previewUrl);
+  }
 }
 async function refresh(){if(current)render(await request("/books/"+current));}
-async function openBook(id){if(!id)return;current=id;await refresh();message("Projekt geladen.");}
+async function openBook(id){if(!id)return;current=id;editDirty=false;el("audio").removeAttribute("src");await refresh();message("Projekt geladen.");}
 async function saveSettings(glossary){
   if(!current)throw Error("Erst ein Buch auswählen.");
-  var settings={speaker:el("voice").value,speed:Number(el("speed").value),
+  var settings={speaker:el("voice").value,speed:Number(el("speed").value),quality:el("quality").value,
     max_chars:Number(el("chars").value),instruction:el("instruction").value,
     captions:el("captions").checked,notes:el("notes").checked};
   var body={settings:settings};
   if(glossary)body.glossary=JSON.parse(el("glossary").value);
   var response=await request("/books/"+current+"/config",{method:"PUT",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  render(response);message("Gespeichert. Bei Änderungen muss die Sprachprobe erneut freigegeben werden.");
+  editDirty=false;render(response);message("Gespeichert. Bei Änderungen muss die Sprachprobe erneut freigegeben werden.");
 }
 async function start(options){if(!current)throw Error("Erst ein Buch auswählen.");await post("/books/"+current+"/run",options);message("Auftrag gestartet.");}
 function wire(id,fn){el(id).addEventListener("click",async function(){try{await fn();}catch(e){message("Fehler: "+e.message);}});}
@@ -126,8 +133,14 @@ wire("approve",async function(){render(await post("/books/"+current+"/approve"))
 wire("run",async function(){await start({});});
 wire("resume",async function(){await start({});});
 wire("pause",async function(){await post("/books/"+current+"/pause");message("Pause angefordert.");});
+wire("cancel",async function(){await post("/books/"+current+"/cancel");message("Abbruch nach dem laufenden Segment angefordert. Bisherige Segmente bleiben erhalten.");});
 wire("rerender",async function(){await start({force_id:el("segment").value});});
 wire("qa",async function(){var q=await request("/books/"+current+"/quality");message("Prüfung: "+q.missing+" Segmente fehlen, "+q.warnings.length+" Warnungen. Bericht abrufbar.");});
+wire("export",async function(){await post("/books/"+current+"/export");await refresh();message("M4B aus den aktuellen Segmenten neu erstellt.");});
+["voice","speed","chars","quality","instruction","captions","notes","glossary"].forEach(function(id){
+  el(id).addEventListener("input",function(){editDirty=true;});
+  el(id).addEventListener("change",function(){editDirty=true;});
+});
 (async function init(){try{var cap=await request("/capabilities");cap.voices.forEach(function(v){option(el("voice"),v,v);});
   await refreshLists();if(el("books").options.length)await openBook(el("books").value);
   setInterval(function(){refresh().catch(function(e){message(e.message);});},3000);
