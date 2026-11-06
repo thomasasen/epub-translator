@@ -12,6 +12,40 @@ RunPod: GPU 24 GB oder 48 GB, persistenter Mount `/workspace`, HTTP-Port **nur 3
 
 Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-Startbefehl verwendet werden (mit `EPUB_DEPLOY_REF=main` oder ohne Variable).
 
+## Zwei Oberflächen, ein Qwen3-TTS-Backend
+
+Das ursprüngliche **TBL „Generate Audiobook“**-Fenster bleibt erhalten. Für EPUB-Dateien
+erhält es zusätzlich **Qwen3-TTS (lokale GPU · deutsches Fachbuch)** neben den
+bestehenden Optionen **Edge TTS** und **Chatterbox**. Die voreingestellte
+TBL-Zielsprache wird auf Deutsch gestellt; die anderen Sprachen und Anbieter
+bleiben auswählbar.
+
+**Qwen im TBL-Dialog:** EPUB in der TBL-Dateiliste auswählen → Kopfhörer-
+Symbol → Qwen3-TTS wählen → Sprecherstimme und Tempo einstellen →
+**Sprachprobe erzeugen** → Probe anhören → explizit freigeben →
+Hörbuch erstellen → M4B im selben Dialog herunterladen. Für Glossar,
+Kapitelbearbeitung, detaillierten Jobstatus und Korrekturen öffnet der Link
+„Ausführliches Hörbuchstudio öffnen“ das jeweilige Projekt unter `/audiobook/`.
+
+**Separate Oberfläche:** Das bisherige vollständige Hörbuchstudio bleibt
+unter `/audiobook/` unverändert verfügbar und nutzt denselben Backenddienst.
+Die Ergebnisse und Projekte sind zwischen beiden Oberflächen geteilt.
+
+**Technik und Updatefestigkeit:** Die TBL-Version bleibt auf den bisherigen
+Commit `0cc31bc7f4aeedfcb3fe904eeaebd15d6fa0ad1f` gepinnt. Beim
+Pod-Start wendet `scripts/patch_tbl_tts.py` nur einen überprüften,
+idempotenten UI-Patch auf das lokale Checkout an. Edge TTS, Chatterbox
+und der TBL-Backendcode werden nicht verändert. Wenn der Upstream ein
+unbekanntes Dialoglayout hat, bricht die Integration mit einer klaren
+Fehlermeldung ab, statt stillschweigend falsche Stellen zu verändern.
+Bei `AUDIOBOOK_ENABLED=0` wird der Patch entfernt.
+
+Die native TBL-Qwen-Integration arbeitet derzeit nur mit **EPUB**
+aus dem gemeinsamen Ausgabeverzeichnis `translated_files`. Andere TBL-Dateitypen
+verwenden weiterhin die ursprünglichen Anbieter. Auch diese Oberfläche
+fordert vor der vollständigen Qwen-Produktion eine ausdrücklich angehörte
+und freigegebene Sprachprobe. Das Original-EPUB wird nicht verändert.
+
 ## Hörbuch erstellen
 
 1. Den bekannten RunPod-Proxy-Link öffnen; unter `/audiobook/` das Hörbuchstudio aufrufen.
