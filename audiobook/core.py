@@ -197,6 +197,7 @@ def normalize_spoken(text: str) -> str:
     """Nur eindeutige Symbole aussprechen; Zahlenwerte nicht umrechnen."""
     text = re.sub(r"(?<=\d)\s*%", " Prozent", text)
     text = re.sub(r"(?<=\d)\s*€", " Euro", text)
+    text = text.replace(" €", " Euro").replace("€ ", "Euro ")
     return text
 
 
