@@ -300,6 +300,45 @@ def approve(book_id: str) -> dict:
     return state
 
 
+def preview_term(book_id: str, phrase: str) -> str:
+    """Pronounce a short glossary term without altering the EPUB or full-job cache."""
+    from .core import apply_glossary, normalize_spoken
+    if not isinstance(phrase, str) or not 1 <= len(phrase.strip()) <= 160:
+        raise ValueError("Begriff/Vorschautext: 1 bis 160 Zeichen")
+    if not ACTIVE_LOCK.acquire(blocking=False):
+        raise RuntimeError("GPU bereits für TTS belegt")
+    engine = None
+    try:
+        state = load(book_id)
+        spoken = normalize_spoken(apply_glossary(phrase.strip(), state["glossary"]))
+        token = checksum(json.dumps([spoken, state["configuration_sha256"], MODEL_ID],
+                                    ensure_ascii=False))[:16]
+        folder = project_path(book_id)
+        destination = safe_path(folder, f"terms/{token}.mp3")
+        if destination.is_file() and destination.stat().st_size > 1000:
+            return token
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        wav = safe_path(folder, f"terms/{token}.pending.wav")
+        mp3 = safe_path(folder, f"terms/{token}.pending.mp3")
+        try:
+            engine = create_engine(state["config"]["backend"])
+            engine.synthesize(spoken, wav, speaker=state["config"]["speaker"],
+                              instruction=state["config"]["instruction"],
+                              seed=state["config"]["seed"])
+            inspect_wav(wav)
+            _run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                  "-i", str(wav), "-af", f"atempo={state['config']['speed']}",
+                  "-c:a", "libmp3lame", "-b:a", "128k", str(mp3)])
+            mp3.replace(destination)
+        finally:
+            wav.unlink(missing_ok=True)
+            mp3.unlink(missing_ok=True)
+        return token
+    finally:
+        if engine:
+            engine.close()
+        ACTIVE_LOCK.release()
+
 def _ffmetadata(state: dict, durations: list[float], filename: Path) -> None:
     def clean(s):
         return str(s).replace("\\", "\\\\").replace("\n", " ").replace("=", "\\=").replace(";", "\\;").replace("#", "\\#")
