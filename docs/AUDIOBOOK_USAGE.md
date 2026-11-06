@@ -12,6 +12,28 @@ RunPod: GPU 24 GB oder 48 GB, persistenter Mount `/workspace`, HTTP-Port **nur 3
 
 Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-Startbefehl verwendet werden (mit `EPUB_DEPLOY_REF=main` oder ohne Variable).
 
+## Inhaltsverzeichnis überspringen
+
+Die Option **„Inhaltsverzeichnis überspringen“** ist bei neuen Hörbuchprojekten
+standardmäßig **aktiviert**, sowohl im TBL-Standarddialog „Generate Audiobook“
+als auch im separaten Hörbuchstudio unter `/audiobook/`.
+
+Erkannt werden EPUB-Navigationsdateien (`properties="nav"`), als
+Inhaltsverzeichnis markierte Seiten (`epub:type="toc"`) sowie eigenständige
+Seiten mit einer eindeutigen Überschrift „Inhaltsverzeichnis“, „Contents“
+oder „Table of Contents“. Längere Fließtextabschnitte werden aus
+Sicherheitsgründen nicht aufgrund einer Überschrift gelöscht.
+Vorwort, Einleitung und Kapitel bleiben erhalten. Auslassungen werden
+im Qualitätsbericht protokolliert.
+
+Die Einstellung kann pro Projekt deaktiviert werden. Beim Ändern werden
+Sprachsegmente, Kapitelmarken und Dauer aktualisiert und die vorherige
+Sprachprobenfreigabe verfällt. Das Original-EPUB bleibt unverändert.
+
+Hinweis: EPUB-Navigationsbäume in `<nav>` werden grundsätzlich nicht
+als Fließtext vertont. Bei ungewöhnlich strukturierten EPUBs die
+Sprachprobe kontrollieren.
+
 ## Neue deutsche Muttersprachler-Stimme (Thorsten)
 
 **Standard in beiden Oberflächen:** `Qwen3 Base Deutsch (Thorsten)` mit

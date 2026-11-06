@@ -130,7 +130,38 @@ def _blocks(root: ET.Element, *, captions: bool, notes: bool) -> tuple[list[dict
     return blocks, exclusions
 
 
-def read_epub(path: Path, *, captions: bool = False, notes: bool = False) -> dict:
+TOC_HEADINGS = {"inhaltsverzeichnis", "table of contents", "contents"}
+
+
+def is_toc_document(root: ET.Element, item: dict) -> bool:
+    """Skip only a complete TOC document, not a chapter merely mentioning contents.
+
+    Official EPUB nav/epub:type wins. For unmarked EPUB2 tables, require
+    a dedicated TOC heading, optionally coupled with an anchor list.
+    """
+    properties = set(item.get("properties", "").split())
+    if "nav" in properties:
+        return True
+    body = next((e for e in root.iter() if _tag(e) == "body"), root)
+    for element in (body, *list(body)):
+        epub_type = " ".join(v for k, v in element.attrib.items()
+                             if k.endswith("}type") or k == "epub:type")
+        if "toc" in epub_type.split():
+            return True
+    title = next((plain("".join(e.itertext())) for e in body.iter()
+                  if _tag(e) in HEADINGS), "")
+    normalized = re.sub(r"[^\w]+", " ", title.casefold()).strip()
+    if normalized not in TOC_HEADINGS:
+        return False
+    # A genuine chapter occasionally starts with a TOC heading but continues
+    # as prose on the same HTML page; err on the side of preserving that prose.
+    long_paragraph = any(len(plain("".join(e.itertext()))) > 200
+                         for e in body.iter() if _tag(e) == "p")
+    return not long_paragraph
+
+
+def read_epub(path: Path, *, captions: bool = False, notes: bool = False,
+              skip_toc: bool = True) -> dict:
     validate_epub(path)
     with zipfile.ZipFile(path) as z:
         container = ET.fromstring(z.read("META-INF/container.xml"))
@@ -159,6 +190,7 @@ def read_epub(path: Path, *, captions: bool = False, notes: bool = False) -> dic
                     if e.attrib.get("media-type", "").startswith("image/"):
                         meta["cover"] = location
         chapters = []
+        skipped_toc = []
         for e in package.iter():
             if _tag(e) != "itemref" or e.attrib.get("linear", "yes") == "no":
                 continue
@@ -168,6 +200,10 @@ def read_epub(path: Path, *, captions: bool = False, notes: bool = False) -> dic
             if item["type"] not in {"application/xhtml+xml", "text/html"}:
                 continue
             root = ET.fromstring(z.read(item["path"]))
+            if skip_toc and is_toc_document(root, item):
+                skipped_toc.append({"chapter": None,
+                                    "reason": "Inhaltsverzeichnis ausgelassen: " + item["path"]})
+                continue
             blocks, excluded = _blocks(root, captions=captions, notes=notes)
             if not blocks:
                 continue
@@ -178,8 +214,8 @@ def read_epub(path: Path, *, captions: bool = False, notes: bool = False) -> dic
         if not chapters:
             raise ValueError("EPUB enthält keine vorlesbaren Kapitel")
         return {"metadata": meta, "chapters": chapters,
-                "exclusions": [{"chapter": c["id"], "reason": x}
-                               for c in chapters for x in c["exclusions"]]}
+                "exclusions": skipped_toc + [{"chapter": c["id"], "reason": x}
+                                             for c in chapters for x in c["exclusions"]]}
 
 
 def apply_glossary(text: str, glossary: dict[str, str]) -> str:

@@ -26,7 +26,7 @@ SETTINGS = {
     "intonation and meaningful pauses. Sound interested in the subject, never sleepy, rushed "
     "or theatrical. Maintain consistent vocal character; avoid robotic rhythm and fake breaths.",
     "speed": 1.05, "max_chars": 400, "seed": 1106,
-    "captions": False, "notes": False, "quality": "high",
+    "captions": False, "notes": False, "skip_toc": True, "quality": "high",
 }
 ID = re.compile(r"^[a-f0-9]{12}$")
 
@@ -76,7 +76,8 @@ def create_book(source: Path, *, config: dict | None = None) -> str:
     folder.mkdir(parents=False, exist_ok=False)
     try:
         shutil.copyfile(path, folder / "source.epub")
-        parsed = read_epub(folder / "source.epub", captions=cfg["captions"], notes=cfg["notes"])
+        parsed = read_epub(folder / "source.epub", captions=cfg["captions"], notes=cfg["notes"],
+                           skip_toc=cfg["skip_toc"])
         glossary = load_glossary()
         parts = _build_segments(parsed["chapters"], glossary, cfg)
         state = {"id": book_id, "source_sha256": data_hash,
@@ -122,6 +123,8 @@ def checked_config(new: dict) -> dict:
         raise ValueError("Ungültige Sprachparameter")
     cfg["captions"] = bool(cfg["captions"])
     cfg["notes"] = bool(cfg["notes"])
+    if not isinstance(cfg["skip_toc"], bool):
+        raise ValueError("skip_toc muss true oder false sein")
     return cfg
 
 
@@ -136,12 +139,16 @@ def configure(book_id: str, values: dict | None = None, glossary: dict | None = 
     from .core import apply_glossary
     apply_glossary("Kontrolle", words)
     parsed = read_epub(project_path(book_id) / "source.epub",
-                       captions=cfg["captions"], notes=cfg["notes"])
+                       captions=cfg["captions"], notes=cfg["notes"], skip_toc=cfg["skip_toc"])
     fp = _fingerprint(cfg, words)
     if fp != state["configuration_sha256"]:
         state["approved_fingerprint"] = None
         state["status"] = "prepared"
     state.update({"config": cfg, "glossary": words, "configuration_sha256": fp,
+                  "chapters": [{"id": chapter["id"], "title": chapter["title"],
+                                "characters": chapter["characters"]}
+                               for chapter in parsed["chapters"]],
+                  "estimated_minutes": round(sum(chapter["characters"] for chapter in parsed["chapters"]) / 900, 1),
                   "exclusions": parsed["exclusions"],
                   "segments": _build_segments(parsed["chapters"], words, cfg)})
     save(book_id, state)
