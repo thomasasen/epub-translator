@@ -10,6 +10,10 @@ import wave
 from pathlib import Path
 
 MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+BASE_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+COSYVOICE_MODEL_ID = "Thorsten-Voice/CosyVoice3"
+MODEL_IDS = {"qwen-customvoice": MODEL_ID, "qwen-base-german": BASE_MODEL_ID,
+             "cosyvoice-thorsten": COSYVOICE_MODEL_ID, "mock": "mock-ci"}
 VOICES = ("Ryan", "Aiden", "Uncle_Fu", "Serena", "Vivian", "Dylan", "Eric", "Ono_Anna", "Sohee")
 
 
@@ -132,9 +136,105 @@ class QwenCustomVoiceEngine:
         self.torch.cuda.empty_cache()
 
 
+
+def cosyvoice_available() -> bool:
+    """Only the official Thorsten service on the loopback interface is accepted."""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=2) as response:
+            body = json.load(response)
+        return body.get("status") == "ok" and "Thorsten" in str(body.get("model", ""))
+    except (OSError, ValueError, TimeoutError, KeyError):
+        return False
+
+
+class QwenGermanCloneEngine:
+    """Qwen Base with a genuine German CC0 speaker reference (not Ryan)."""
+    model_id = BASE_MODEL_ID
+
+    def __init__(self) -> None:
+        from .german_reference import ensure_thorsten_reference
+        reference, reference_text = ensure_thorsten_reference()
+        assert_gpu_available()
+        import torch
+        from qwen_tts import Qwen3TTSModel
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA nicht verfügbar")
+        self.torch = torch
+        self.model = Qwen3TTSModel.from_pretrained(
+            BASE_MODEL_ID, device_map="cuda:0", dtype=torch.bfloat16,
+            attn_implementation=os.getenv("AUDIOBOOK_ATTENTION", "sdpa"))
+        # The exact reference transcript improves pronunciation/style conditioning.
+        self.voice_prompt = self.model.create_voice_clone_prompt(
+            ref_audio=str(reference), ref_text=reference_text, x_vector_only_mode=False)
+
+    def synthesize(self, text: str, destination: Path, *, speaker: str,
+                   instruction: str, seed: int, speed: float = 1.0) -> None:
+        import soundfile as sf
+        if speaker != "Thorsten":
+            raise ValueError("Qwen-Base-Deutsch verwendet ausschließlich Thorsten als Referenzstimme")
+        self.torch.manual_seed(seed)
+        self.torch.cuda.manual_seed_all(seed)
+        try:
+            waves, sample_rate = self.model.generate_voice_clone(
+                text=text, language="German", voice_clone_prompt=self.voice_prompt)
+            if not waves or not len(waves[0]):
+                raise RuntimeError("Leere deutsche TTS-Ausgabe")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(destination), waves[0], sample_rate, subtype="PCM_16")
+        except self.torch.cuda.OutOfMemoryError as exc:
+            raise RuntimeError("GPU-Speicher für Qwen Base nicht ausreichend") from exc
+
+    def close(self) -> None:
+        del self.model
+        del self.voice_prompt
+        gc.collect()
+        self.torch.cuda.empty_cache()
+
+
+class ThorstenCosyVoiceEngine:
+    """Use the official separate CosyVoice3-Thorsten HTTP service on localhost."""
+    model_id = COSYVOICE_MODEL_ID
+
+    def __init__(self) -> None:
+        if not cosyvoice_available():
+            raise RuntimeError(
+                "Thorsten CosyVoice3 ist nicht gestartet. Starte den offiziellen "
+                "CosyVoice-Docker-Dienst mit GPU lokal auf Port 8000 oder wähle "
+                "Qwen3 Base Deutsch (keine zusätzliche Docker-Installation nötig).")
+        assert_gpu_available(min_free_mib=0)
+
+    def synthesize(self, text: str, destination: Path, *, speaker: str,
+                   instruction: str, seed: int, speed: float = 1.0) -> None:
+        import urllib.parse
+        import urllib.request
+        if speaker != "Thorsten":
+            raise ValueError("CosyVoice3-Thorsten hat eine feste deutsche Stimme")
+        payload = urllib.parse.urlencode({"text": text, "speed": f"{speed:.3f}"}).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8000/tts", data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=360) as response:
+                data = response.read(15 * 1024 * 1024 + 1)
+        except (OSError, TimeoutError) as exc:
+            raise RuntimeError("Thorsten-CosyVoice3-Dienst nicht erreichbar: " + str(exc)) from exc
+        if len(data) > 15 * 1024 * 1024 or len(data) < 100 or not data.startswith(b"RIFF"):
+            raise RuntimeError("CosyVoice3 lieferte keine gültige WAV-Datei")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+
+    def close(self) -> None:
+        pass
+
 def create_engine(name: str):
     if name == "qwen-customvoice":
         return QwenCustomVoiceEngine()
+    if name == "qwen-base-german":
+        return QwenGermanCloneEngine()
+    if name == "cosyvoice-thorsten":
+        return ThorstenCosyVoiceEngine()
     if name == "mock" and os.getenv("AUDIOBOOK_TEST_MOCK") == "1":
         return MockEngine()
     raise ValueError("Nicht unterstütztes Speech-Backend")
