@@ -36,6 +36,8 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <div class="field"><label for="quality">Qualitätsprofil</label><select id="quality"><option value="high">Hochwertig (Standard)</option><option value="careful">Sorgfältig (kürzere Segmente)</option></select></div>
 <div class="field"><label for="instruction">Sprechanweisung</label><input id="instruction"><p class="hint">Der Sprechanweisungs-Parameter wird vom bisherigen Qwen-CustomVoice-Modell verwendet. Die deutsche Thorsten-Stimme wird über echte deutsche Referenzaufnahmen bzw. das deutsche CosyVoice3-Modell gesteuert.</p></div>
 <div class="grid"><div><label><input id="captions" style="width:auto" type="checkbox"> Bildunterschriften vorlesen</label></div><div><label><input id="notes" style="width:auto" type="checkbox"> Fußnoten vorlesen</label></div></div>
+<div class="field"><label><input id="skipToc" style="width:auto" type="checkbox" checked> Inhaltsverzeichnis überspringen (Standard)</label>
+<p class="hint">Erkennt EPUB-Navigationsdateien und eigenständige Inhaltsverzeichnis-Seiten. Vorwort und Einleitung bleiben erhalten; ausgelassene Teile stehen im Prüfbericht.</p></div>
 <div class="buttons"><button id="save">Einstellungen übernehmen</button></div>
 </section>
 <section class="panel"><h2>3. Ausspracheglossar</h2>
@@ -105,6 +107,7 @@ function render(s){
     el("chars").value=String(s.config.max_chars);el("quality").value=s.config.quality;
     el("instruction").value=s.config.instruction;
     el("captions").checked=s.config.captions;el("notes").checked=s.config.notes;
+    el("skipToc").checked=s.config.skip_toc!==false;
     el("glossary").value=JSON.stringify(s.glossary,null,2);
   }
   el("chapters").replaceChildren();s.chapters.forEach(function(ch){
@@ -128,7 +131,8 @@ async function saveSettings(glossary){
   var settings={backend:el("model").value,speaker:el("voice").value,
     speed:Number(el("speed").value),quality:el("quality").value,
     max_chars:Number(el("chars").value),instruction:el("instruction").value,
-    captions:el("captions").checked,notes:el("notes").checked};
+    captions:el("captions").checked,notes:el("notes").checked,
+    skip_toc:el("skipToc").checked};
   var body={settings:settings};
   if(glossary)body.glossary=JSON.parse(el("glossary").value);
   var response=await request("/books/"+current+"/config",{method:"PUT",
@@ -164,7 +168,7 @@ wire("export",async function(){await post("/books/"+current+"/export");await ref
 el("model").addEventListener("change",function(){updateVoices(el("model").value);editDirty=true;
   message(el("model").value==="qwen-customvoice"?"Achtung: Diese Stimmen können einen fremdsprachigen Akzent haben.":"Für die neue Stimme wird eine neue Sprachprobe benötigt.");
 });
-["voice","speed","chars","quality","instruction","captions","notes","glossary"].forEach(function(id){
+["voice","speed","chars","quality","instruction","captions","notes","skipToc","glossary"].forEach(function(id){
   el(id).addEventListener("input",function(){editDirty=true;});
   el(id).addEventListener("change",function(){editDirty=true;});
 });
