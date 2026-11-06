@@ -19,7 +19,7 @@ Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-S
 3. Kapitel, geschätzte Dauer und ausgeschlossene Bestandteile prüfen. Tabellen werden zunächst zur manuellen Nachprüfung gemeldet.
 4. Sprecher, Sprechtempo, Qualitätsprofil, Ausspracheglossar und optional Bildunterschriften/Fußnoten einstellen. Einzelbegriffe können mit dem Vorlesen-Knopf geprüft werden. Danach **Sprachprobe erzeugen**.
 5. Sprachprobe vollständig anhören; vor allem Fachbegriffe, Zahlen, Pause und Stimmenkontinuität kontrollieren. Nur bei Zufriedenheit **Sprachprobe freigeben**.
-6. **Ganzes Hörbuch erzeugen** starten; bei Unterbrechung **Fortsetzen**. Fertiges `book.m4b` mit Kapitelmarken laden oder MP3-Kapitel verwenden.
+6. **Ganzes Hörbuch erzeugen** starten. Mit Pausieren oder Abbrechen wird nach dem aktuellen Segment gestoppt; die bisherigen Segmente bleiben erhalten. Anschließend kann **Fortsetzen** genutzt werden. Fertiges `book.m4b` mit Kapitelmarken laden oder MP3-Kapitel verwenden.
 7. Qualitätsbericht lesen und Warnsegmente erneut generieren. Nach einer erneuten Generierung des Segments muss das M4B neu exportiert werden.
 
 **Bei knapper GPU:** Übersetzung zu Ende bringen, `ollama ps` prüfen und das Ollama-Modell nach dem Ende per `ollama stop <modellname>` entladen. Nicht während einer laufenden Übersetzung entladen. Der Modellwechsel erfolgt nicht automatisch.
