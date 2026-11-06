@@ -150,7 +150,7 @@ def is_toc_document(root: ET.Element, item: dict) -> bool:
             return True
     title = next((plain("".join(e.itertext())) for e in body.iter()
                   if _tag(e) in HEADINGS), "")
-    normalized = re.sub(r"[^\\w]+", " ", title.casefold()).strip()
+    normalized = re.sub(r"[^\w]+", " ", title.casefold()).strip()
     if normalized not in TOC_HEADINGS:
         return False
     # A genuine chapter occasionally starts with a TOC heading but continues
