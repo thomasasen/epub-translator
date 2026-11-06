@@ -141,6 +141,8 @@ class BookTests(unittest.TestCase):
             book_id = pipeline.create_book(self.epub, config={"backend": "mock"})
             pipeline.synthesize(book_id, preview=True)
             pipeline.approve(book_id)
+            first = pipeline.load(book_id)["segments"][0]
+            pipeline._file(book_id, first, pipeline._signature(pipeline.load(book_id), first)).unlink(missing_ok=True)
             with patch.object(pipeline, "create_engine", return_value=StopAfterFirst()):
                 status = pipeline.synthesize(book_id)
             self.assertEqual(status["status"], "cancelled")
