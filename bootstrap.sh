@@ -200,13 +200,54 @@ for _ in $(seq 1 90); do
 done
 ((ready == 1)) || die "Translation app failed healthcheck."
 
+# Install audiobook separately; no modification to pinned TranslateBooksWithLLMs.
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  DEPLOY_DIR=$BASE/deployment
+  if [[ ! -d "$DEPLOY_DIR/.git" ]]; then
+    [[ ! -e "$DEPLOY_DIR" ]] || die "$DEPLOY_DIR is not a git checkout"
+    git clone -q https://github.com/thomasasen/epub-translator.git "$DEPLOY_DIR"
+  fi
+  git -C "$DEPLOY_DIR" fetch -q --depth 1 origin "$DEPLOY_REF"
+  git -C "$DEPLOY_DIR" checkout -q --detach FETCH_HEAD
+  if [[ ! -x "$BASE/tts-venv/bin/python" ]]; then
+    python3 -m venv --system-site-packages "$BASE/tts-venv"
+  fi
+  TTS_REQ_SHA=$(sha256sum "$DEPLOY_DIR/audiobook/requirements.txt" | cut -d" " -f1)
+  if [[ ! -f "$BASE/tts-venv/.requirements-sha" ]] || [[ "$(< "$BASE/tts-venv/.requirements-sha")" != "$TTS_REQ_SHA" ]]; then
+    log "Installing audiobook dependencies ... "
+    "$BASE/tts-venv/bin/python" -m pip install -r "$DEPLOY_DIR/audiobook/requirements.txt" >"$LOG/tts-pip.log" 2>&1 ||
+      { tail -n 60 "$LOG/tts-pip.log" >&2; die "TTS pip install failed"; }
+    printf "%s\n" "$TTS_REQ_SHA" >"$BASE/tts-venv/.requirements-sha"
+  fi
+  mkdir -p "$BASE/audiobooks" "$BASE/hf-cache"
+  export AUDIOBOOK_ROOT="$BASE/audiobooks"
+  export AUDIOBOOK_TRANSLATED="$BASE/translated_files"
+  export HF_HOME="$BASE/hf-cache"
+  export PYTHONPATH="$DEPLOY_DIR"
+  "$BASE/tts-venv/bin/python" -m uvicorn audiobook.server:app --host 127.0.0.1 --port 5100 >"$LOG/audiobook.log" 2>&1 &
+  PID_TTS=$!
+  ready=0
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 2 http://127.0.0.1:5100/audiobook/health >/dev/null; then ready=1; break; fi
+    kill -0 "$PID_TTS" 2>/dev/null || { tail -n 50 "$LOG/audiobook.log" >&2; die "Audiobook service crashed"; }
+    sleep 2
+  done
+  ((ready == 1)) || die "Audiobook service timeout"
+fi
 nginx -c /etc/nginx/epub-translator.conf -g 'daemon off;' >"$LOG/nginx.log" 2>&1 &
 PID_WEB=$!
 sleep 2
 kill -0 "$PID_WEB" 2>/dev/null || die "nginx crashed."
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
-[[ "$CODE" == 401 ]] || die "Auth failure: expected 401 without password, got $CODE."
-log "READY: RunPod Connect -> HTTP port 3000; log in as $EPUB_USERNAME"
-log "Never expose internal ports 5000 or 11434. Logs: $LOG"
-wait -n "$PID_WEB" "$PID_APP" "$PID_OLLAMA" || true
+[[ "$CODE" == 200 ]] || die "Proxy failure: expected HTTP 200, got $CODE"
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  curl -fsS --max-time 5 http://127.0.0.1:3000/audiobook/health >/dev/null || die "Audiobook proxy failed"
+fi
+log "READY: RunPod Connect -> HTTP port 3000; no extra password"
+log "Do not expose internal ports 5000, 5100 or 11434. Logs: $LOG"
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  wait -n "$PID_WEB" "$PID_TTS" "$PID_APP" "$PID_OLLAMA" || true
+else
+  wait -n "$PID_WEB" "$PID_APP" "$PID_OLLAMA" || true
+fi
 die "A service terminated unexpectedly; check $LOG"
