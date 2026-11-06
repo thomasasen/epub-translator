@@ -32,9 +32,9 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <div class="grid"><div class="field"><label for="voice">Sprecherstimme</label><select id="voice"></select></div>
 <div class="field"><label for="speed">Sprechtempo</label><select id="speed"><option value="0.9">Ruhig · 0,9×</option><option value="1">Natürlich · 1,0×</option><option value="1.05" selected>Lebendig · 1,05× (Standard)</option><option value="1.1">Zügig · 1,1×</option></select></div></div>
 <div class="grid"><div class="field"><label for="chars">Segmentlänge</label><select id="chars"><option value="300">300 Zeichen</option><option value="400" selected>400 Zeichen</option><option value="600">600 Zeichen</option></select></div>
-<div class="field"><label for="model">TTS-Modell</label><select id="model"><option value="qwen-customvoice">Qwen3-TTS 1.7B</option></select></div></div>
+<div class="field"><label for="model">TTS-Modell</label><select id="model"></select></div></div>
 <div class="field"><label for="quality">Qualitätsprofil</label><select id="quality"><option value="high">Hochwertig (Standard)</option><option value="careful">Sorgfältig (kürzere Segmente)</option></select></div>
-<div class="field"><label for="instruction">Sprechanweisung</label><input id="instruction"></div>
+<div class="field"><label for="instruction">Sprechanweisung</label><input id="instruction"><p class="hint">Der Sprechanweisungs-Parameter wird vom bisherigen Qwen-CustomVoice-Modell verwendet. Die deutsche Thorsten-Stimme wird über echte deutsche Referenzaufnahmen bzw. das deutsche CosyVoice3-Modell gesteuert.</p></div>
 <div class="grid"><div><label><input id="captions" style="width:auto" type="checkbox"> Bildunterschriften vorlesen</label></div><div><label><input id="notes" style="width:auto" type="checkbox"> Fußnoten vorlesen</label></div></div>
 <div class="buttons"><button id="save">Einstellungen übernehmen</button></div>
 </section>
@@ -85,13 +85,23 @@ async function refreshLists(){
   var names=await request("/translated");el("translated").replaceChildren();
   names.forEach(function(x){option(el("translated"),x,x);});
 }
+var legacyVoices=[];
+function updateVoices(backend,selected){
+  var control=el("voice");control.replaceChildren();
+  var list=backend==="qwen-customvoice"?legacyVoices:["Thorsten"];
+  list.forEach(function(x){option(control,x,x);});
+  control.value=selected||list[0];
+  if(control.value!==selected&&selected!==undefined)control.value=list[0];
+}
 function link(kind,element){element.href=current?("/audiobook/api/books/"+current+"/download/"+kind):"#";}
 function render(s){
   el("booktitle").textContent=s.title+" · "+s.author+" · geschätzt "+s.estimated_minutes+" Minuten Audio";
   el("status").textContent="Status: "+s.status+"\\nFortschritt: "+(s.done||0)+" / "+(s.total||s.segments.length)+" Segmente\\nHinweise/Auslassungen: "+s.exclusions.length+"\\n"+(s.errors||[]).join("\\n");
   el("progress").max=s.total||1;el("progress").value=s.done||0;
   if(!editDirty){
-    el("voice").value=s.config.speaker;el("speed").value=String(s.config.speed);
+    el("model").value=s.config.backend;
+    updateVoices(s.config.backend,s.config.speaker);
+    el("speed").value=String(s.config.speed);
     el("chars").value=String(s.config.max_chars);el("quality").value=s.config.quality;
     el("instruction").value=s.config.instruction;
     el("captions").checked=s.config.captions;el("notes").checked=s.config.notes;
@@ -115,7 +125,8 @@ async function refresh(){if(current)render(await request("/books/"+current));}
 async function openBook(id){if(!id)return;current=id;editDirty=false;el("audio").removeAttribute("src");await refresh();message("Projekt geladen.");}
 async function saveSettings(glossary){
   if(!current)throw Error("Erst ein Buch auswählen.");
-  var settings={speaker:el("voice").value,speed:Number(el("speed").value),quality:el("quality").value,
+  var settings={backend:el("model").value,speaker:el("voice").value,
+    speed:Number(el("speed").value),quality:el("quality").value,
     max_chars:Number(el("chars").value),instruction:el("instruction").value,
     captions:el("captions").checked,notes:el("notes").checked};
   var body={settings:settings};
@@ -150,11 +161,26 @@ wire("cancel",async function(){await post("/books/"+current+"/cancel");message("
 wire("rerender",async function(){await start({force_id:el("segment").value});});
 wire("qa",async function(){var q=await request("/books/"+current+"/quality");message("Prüfung: "+q.missing+" Segmente fehlen, "+q.warnings.length+" Warnungen. Bericht abrufbar.");});
 wire("export",async function(){await post("/books/"+current+"/export");await refresh();message("M4B aus den aktuellen Segmenten neu erstellt.");});
+el("model").addEventListener("change",function(){updateVoices(el("model").value);editDirty=true;
+  message(el("model").value==="qwen-customvoice"?"Achtung: Diese Stimmen können einen fremdsprachigen Akzent haben.":"Für die neue Stimme wird eine neue Sprachprobe benötigt.");
+});
 ["voice","speed","chars","quality","instruction","captions","notes","glossary"].forEach(function(id){
   el(id).addEventListener("input",function(){editDirty=true;});
   el(id).addEventListener("change",function(){editDirty=true;});
 });
-(async function init(){try{var cap=await request("/capabilities");cap.voices.forEach(function(v){option(el("voice"),v,v);});
+(async function init(){try{
+  var cap=await request("/capabilities");
+  legacyVoices=cap.voices||[];
+  cap.engines.forEach(function(engine){
+    var label=engine.label||engine.id;
+    if(!engine.available)label+=" (Dienst nicht gestartet)";
+    var entry=document.createElement("option");
+    entry.value=engine.id;entry.textContent=label;entry.disabled=!engine.available;
+    el("model").appendChild(entry);
+  });
+  el("model").value=cap.default_backend;
+  updateVoices(cap.default_backend);
+
   await refreshLists();
   var requestedBook=new URLSearchParams(window.location.search).get("book");
   if(requestedBook && Array.from(el("books").options).some(function(o){return o.value===requestedBook;})){
