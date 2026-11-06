@@ -195,8 +195,8 @@ def apply_glossary(text: str, glossary: dict[str, str]) -> str:
 
 def normalize_spoken(text: str) -> str:
     """Nur eindeutige Symbole aussprechen; Zahlenwerte nicht umrechnen."""
-    text = re.sub(r"(?<=\\d)\\s*%", " Prozent", text)
-    text = re.sub(r"(?<=\\d)\\s*€", " Euro", text)
+    text = re.sub(r"(?<=\d)\s*%", " Prozent", text)
+    text = re.sub(r"(?<=\d)\s*€", " Euro", text)
     return text
 
 
