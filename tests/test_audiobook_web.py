@@ -38,6 +38,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.client.get("/audiobook/health").status_code, 200)
         self.assertEqual(self.client.get("/audiobook/api/books").json(), [])
 
+    def test_native_tbl_bridge_script_available(self):
+        response = self.client.get("/audiobook/tbl-bridge.js")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn("text/javascript", response.headers["content-type"])
+        self.assertIn("generateQwenFromTbl", response.text)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+
     def test_upload_config_gate_and_qa(self):
         with self.epub.open("rb") as file:
             response = self.client.post("/audiobook/api/upload", files={
