@@ -31,6 +31,16 @@ jobs:
           cp audiobook/tbl-bridge.js /tmp/tbl-bridge.mjs
           node --check /tmp/tbl-native-index.mjs
           node --check /tmp/tbl-bridge.mjs
+      - name: Validate the German Thorsten reference API and audio download
+        run: |
+          AUDIOBOOK_VOICE_CACHE="$(mktemp -d)" python3 - <<'PY'
+          from audiobook.german_reference import ensure_thorsten_reference
+          from audiobook.engine import inspect_wav
+          path, transcript = ensure_thorsten_reference()
+          assert len(transcript) >= 70
+          assert 3 <= inspect_wav(path)["seconds"] <= 20
+          print("Real CC0 German reference downloaded and decoded successfully.")
+          PY
       - name: Unit and mocked integration tests
         run: python3 -m unittest discover -s tests -v
       - name: Nginx reverse-proxy integration
