@@ -155,7 +155,11 @@ wire("export",async function(){await post("/books/"+current+"/export");await ref
   el(id).addEventListener("change",function(){editDirty=true;});
 });
 (async function init(){try{var cap=await request("/capabilities");cap.voices.forEach(function(v){option(el("voice"),v,v);});
-  await refreshLists();if(el("books").options.length)await openBook(el("books").value);
+  await refreshLists();
+  var requestedBook=new URLSearchParams(window.location.search).get("book");
+  if(requestedBook && Array.from(el("books").options).some(function(o){return o.value===requestedBook;})){
+    el("books").value=requestedBook;await openBook(requestedBook);
+  }else if(el("books").options.length)await openBook(el("books").value);
   setInterval(function(){refresh().catch(function(e){message(e.message);});},3000);
 }catch(e){message(e.message);}})();
 </script></body></html>
