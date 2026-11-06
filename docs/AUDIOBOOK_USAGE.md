@@ -17,7 +17,7 @@ Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-S
 1. Den bekannten RunPod-Proxy-Link öffnen; unter `/audiobook/` das Hörbuchstudio aufrufen.
 2. Eine bereits übersetzte EPUB aus `translated_files` wählen oder eine deutsche EPUB direkt hochladen. Erneutes Übersetzen ist nicht notwendig.
 3. Kapitel, geschätzte Dauer und ausgeschlossene Bestandteile prüfen. Tabellen werden zunächst zur manuellen Nachprüfung gemeldet.
-4. Sprecher, Sprechtempo, Ausspracheglossar und optional Bildunterschriften/Fußnoten einstellen. Danach **Sprachprobe erzeugen**.
+4. Sprecher, Sprechtempo, Qualitätsprofil, Ausspracheglossar und optional Bildunterschriften/Fußnoten einstellen. Einzelbegriffe können mit dem Vorlesen-Knopf geprüft werden. Danach **Sprachprobe erzeugen**.
 5. Sprachprobe vollständig anhören; vor allem Fachbegriffe, Zahlen, Pause und Stimmenkontinuität kontrollieren. Nur bei Zufriedenheit **Sprachprobe freigeben**.
 6. **Ganzes Hörbuch erzeugen** starten; bei Unterbrechung **Fortsetzen**. Fertiges `book.m4b` mit Kapitelmarken laden oder MP3-Kapitel verwenden.
 7. Qualitätsbericht lesen und Warnsegmente erneut generieren. Nach einer erneuten Generierung des Segments muss das M4B neu exportiert werden.
