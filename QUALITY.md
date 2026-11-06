@@ -13,7 +13,7 @@ Ziel: **höchstmögliche Übersetzungsqualität** bei EPUB-Büchern, nicht bloß
 | Kurze Kontexte, Qualitätsverlust an Abschnittsgrenzen | **mittel/hoch** | Sequenzielle Übersetzung, begrenzte Chunk-Größe, eigene Kontext-/Abschnittstests |
 | Modell passt nicht vollständig auf GPU | **hoch** für Kosten/Laufzeit | Tatsächlicher Ollama-Inferenztest und Warnung bei CPU-Offloading |
 | Ausgabe beschädigt (EPUB, Verweise, Bilder) | **hoch** | Offline-Strukturprüfung mit Warnungen für Anker, Bilder und Kapitel |
-| Offener Zugriff über RunPod-Proxy | **hoch** | Basic-Auth-Nginx nur auf Port 3000; keine Veröffentlichung von 5000/11434 |
+| Offener Zugriff über RunPod-Proxy | **hoch, vom Betreiber bewusst akzeptiert** | Basic Auth auf Wunsch deaktiviert. HTTPS-Proxy-Link geheim halten; keine Veröffentlichung von 5000/5100/11434 |
 | Fehlende Validierung auf echter Hardware | **offen** | ShellCheck und Regressionstests vorhanden; vollständiger RunPod-E2E-Test **noch ausstehend** |
 
 ## 1. Modellwahl als Experiment behandeln
@@ -94,3 +94,7 @@ Ohne `--strict` ist der Exit-Code bei einer nur verdächtigen Abweichung weiterh
 Eine Übersetzung gilt erst dann als brauchbar, wenn (a) die Stichproben nach den oben genannten Kriterien überzeugen, (b) der technische EPUB-Audit keine ungeklärten kritischen Fehler und keine ungeklärten wesentlichen Warnungen liefert, (c) Glossarbegriffe im ganzen Buch konsistent sind und (d) ein EPUB-Reader Inhaltsverzeichnis, Bilder, Fußnoten und Kapitelsprünge korrekt darstellt.
 
 Außerdem gilt: **Ein GPU-Pod und ein lokales Modell liefern Unabhängigkeit und planbare Kosten, aber keine Garantie für die Qualität proprietärer Spitzenmodelle.** Für die besten Ergebnisse ist ein Blindvergleich mit einem hochwertigen Cloud-Modell als Referenz sinnvoll, auch wenn die anschließende Serienübersetzung lokal stattfindet.
+
+## 7. Hörbuchproduktion
+
+Die separate Hörbuchpipeline verwendet einen eigenen Qualitätsprozess mit manueller Sprachprobenfreigabe, nachprüfbarer Segmentvollständigkeit und optionaler ASR-Kontrolle. Details: [Hörbuch-Qualitätsstandard](docs/AUDIOBOOK_QUALITY.md). Die Übersetzungsqualität und die synthetische Sprechqualität sind voneinander unabhängig zu bewerten. **Eine automatische Hörbuch-Freigabe allein durch WER oder eine niedrige ASR-Fehlerquote ist ausgeschlossen.**
