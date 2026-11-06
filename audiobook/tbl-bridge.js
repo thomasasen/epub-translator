@@ -111,6 +111,12 @@ export function enhanceTtsModal(filename, filepath) {
     speedField.append(speed);
     section.append(speedField);
 
+    const tocField = el('label', { style: 'display:flex; align-items:center; gap:9px; margin:12px 0 16px;' });
+    const skipToc = el('input', { id: 'ttsModalSkipToc', type: 'checkbox', checked: '',
+        style: 'width:auto; margin:0;' });
+    tocField.append(skipToc, el('span', {}, 'Inhaltsverzeichnis nicht vorlesen (Standard)'));
+    section.append(tocField);
+
     const state = el('div', { id: 'ttsModalQwenJob', style: 'display:none; margin-top:16px;' });
     const notice = el('p', { id: 'ttsModalQwenNotice', 'aria-live': 'polite', style: 'font-size:13px;' });
     const progress = el('progress', { id: 'ttsModalQwenProgress', max: '1', value: '0', style: 'width:100%;' });
@@ -223,8 +229,9 @@ export async function generateQwenFromTbl({ filename, modal, generateBtn }) {
         const speaker = backend === 'qwen-customvoice' ?
             document.getElementById('ttsModalQwenVoice').value : 'Thorsten';
         const speed = Number(document.getElementById('ttsModalQwenSpeed').value);
+        const skip_toc = document.getElementById('ttsModalSkipToc').checked;
         await request('/books/' + bookId + '/config', 'PUT', {
-            settings: { backend, speaker, speed }
+            settings: { backend, speaker, speed, skip_toc }
         });
         await request('/books/' + bookId + '/run', 'POST', { preview: true });
         generateBtn.textContent = 'Sprachprobe läuft …';
