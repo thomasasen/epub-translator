@@ -24,6 +24,12 @@ Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-S
 
 **Bei knapper GPU:** Übersetzung zu Ende bringen, `ollama ps` prüfen und das Ollama-Modell nach dem Ende per `ollama stop <modellname>` entladen. Nicht während einer laufenden Übersetzung entladen. Der Modellwechsel erfolgt nicht automatisch.
 
+## Umfang: TBL-Standard statt KI-Zusatzinhalte
+
+Die Hörbuchproduktion verwendet ausschließlich die tatsächlich im EPUB vorhandenen Textinhalte. TBL bewahrt beim Übersetzen EPUB-Struktur und Formatierung; es erzeugt im Standard keine eigenständigen Beschreibungen von Bildern oder Diagrammen. Daher beschreibt das Hörbuchstudio Abbildungen **nicht** automatisch und setzt **keine** zusätzliche Vision-KI ein. Bilder ohne Sprechertext werden protokolliert, Tabellen zur Prüfung gemeldet. Bereits vorhandene Bildunterschriften können optional vorgelesen werden. Es werden keine Bildinhalte hinzuerfunden.
+
+Als Voreinstellung verwendet Qwen3-TTS ausdrücklich `language="German"` und eine ruhige, natürlich fließende Sprechanweisung für deutschsprachige Sach- und Fachbücher. Keine künstlich eingefügten Atemgeräusche, keine theatralische Betonung. Stimme und Aussprache müssen vor einer längeren Produktion durch die verpflichtende Sprachprobe geprüft werden; ein realer GPU-Hörtest steht noch aus.
+
 ## CLI
 
 ```bash
