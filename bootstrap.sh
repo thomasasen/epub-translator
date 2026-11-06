@@ -130,10 +130,27 @@ if [[ ! -d "$APP/.git" ]]; then
   git clone -q --depth 1 https://github.com/hydropix/TranslateBooksWithLLMs.git "$APP"
 fi
 if [[ "$(git -C "$APP" rev-parse HEAD)" != "$REF" ]]; then
+  # Restore only our own previously applied upstream UI overlay before TBL upgrades.
+  TBL_JS=$APP/src/web/static/js/index.js
+  if [[ -f "$TBL_JS" ]] && grep -Fq TBL_QWEN_BRIDGE_PATCH_V1 "$TBL_JS"; then
+    git -C "$APP" restore -- src/web/static/js/index.js
+  fi
   git -C "$APP" fetch -q --depth 1 origin "$REF"
   git -C "$APP" checkout -q --detach FETCH_HEAD
 fi
 cd "$APP"
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  # Upstream TBL stays pinned; only its native audiobook dialog gets an overlay.
+  curl -fsSL "https://raw.githubusercontent.com/thomasasen/epub-translator/${DEPLOY_REF}/scripts/patch_tbl_tts.py" \
+    -o /tmp/epub-tbl-qwen-patch.py
+  python3 /tmp/epub-tbl-qwen-patch.py "$APP/src/web/static/js/index.js" ||
+    die "TBL native Qwen integration failed; refusing a partial UI deployment."
+else
+  # The extra provider requires the audiobook service; remove our overlay when disabled.
+  if grep -Fq TBL_QWEN_BRIDGE_PATCH_V1 "$APP/src/web/static/js/index.js" 2>/dev/null; then
+    git -C "$APP" restore -- src/web/static/js/index.js
+  fi
+fi
 [[ -x .venv/bin/python ]] || python3 -m venv .venv
 REQ_SHA=$(sha256sum requirements.txt | cut -d' ' -f1)
 if [[ ! -f .venv/.requirements-sha ]] || [[ "$(< .venv/.requirements-sha)" != "$REQ_SHA" ]]; then
