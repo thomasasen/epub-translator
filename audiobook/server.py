@@ -43,6 +43,13 @@ def home():
     return HTMLResponse(HTML, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/audiobook/tbl-bridge.js")
+def tbl_bridge():
+    """Browser extension for TBL native modal; same-origin, no caching."""
+    return FileResponse(Path(__file__).parent / "tbl-bridge.js", media_type="text/javascript",
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/audiobook/health")
 def health():
     return {"ok": True, "tts_busy": ACTIVE_LOCK.locked(), "model": MODEL_ID}
