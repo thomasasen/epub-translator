@@ -4,6 +4,8 @@ import json
 import os
 import re
 import tempfile
+import zipfile
+from xml.etree import ElementTree as ET
 import threading
 from pathlib import Path
 
@@ -86,7 +88,7 @@ async def upload(file: UploadFile = File(...)):
                     raise HTTPException(413, "Datei größer als 150 MB")
                 out.write(block)
         return {"id": create_book(Path(filename))}
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, zipfile.BadZipFile, ET.ParseError) as exc:
         raise bad(exc)
     finally:
         Path(filename).unlink(missing_ok=True)
@@ -103,7 +105,7 @@ async def from_translated(data: dict):
         if path.parent != TRANSLATED.resolve() or path.suffix.lower() != ".epub" or not path.is_file():
             raise ValueError("EPUB nicht gefunden")
         return {"id": create_book(path)}
-    except (KeyError, ValueError, OSError) as exc:
+    except (KeyError, ValueError, OSError, zipfile.BadZipFile, ET.ParseError) as exc:
         raise bad(exc)
 
 
