@@ -21,11 +21,11 @@ STOP_EVENT = threading.Event()
 CANCEL_EVENT = threading.Event()
 SETTINGS = {
     "backend": "qwen-customvoice", "speaker": "Ryan", "instruction":
-    "Narrate in natural, fluent Standard German, like a professional non-fiction audiobook. "
-    "Speak calmly and clearly, with warm but restrained intonation, natural sentence rhythm, "
-    "subtle emphasis and realistic pauses. Maintain a consistent voice and conversational flow. "
-    "Avoid theatrical delivery, robotic cadence, exaggerated emotion and artificial breath sounds.",
-    "speed": 1.0, "max_chars": 400, "seed": 1106,
+    "Narrate this German non-fiction audiobook in an engaging, confident and natural voice. "
+    "Keep a slightly brisk, easy-to-follow pace with crisp pronunciation, lively but subtle "
+    "intonation and meaningful pauses. Sound interested in the subject, never sleepy, rushed "
+    "or theatrical. Maintain consistent vocal character; avoid robotic rhythm and fake breaths.",
+    "speed": 1.05, "max_chars": 400, "seed": 1106,
     "captions": False, "notes": False, "quality": "high",
 }
 ID = re.compile(r"^[a-f0-9]{12}$")
