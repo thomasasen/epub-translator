@@ -26,6 +26,18 @@ def gpu_free_mib() -> int:
 
 
 def assert_gpu_available(min_free_mib: int = 9000) -> None:
+    # Do not launch TTS while an Ollama translation model is still resident.
+    # The upstream translator has no safe cross-process job-idle signal.
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/ps", timeout=3) as response:
+            resident = json.load(response).get("models", [])
+        if resident:
+            raise RuntimeError("Ollama-Modell ist geladen: laufende Übersetzung erst beenden und danach Ollama kontrolliert entladen.")
+    except (OSError, TimeoutError, ValueError):
+        # No Ollama process, e.g. direct CLI use outside the RunPod deployment.
+        pass
     if gpu_free_mib() < min_free_mib:
         raise RuntimeError(
             "Zu wenig freier VRAM für hochwertige TTS. "
@@ -34,7 +46,7 @@ def assert_gpu_available(min_free_mib: int = 9000) -> None:
         )
 
 
-def inspect_wav(path: Path) -> dict:
+def _inspect_wav(path: Path) -> dict:
     with wave.open(str(path), "rb") as f:
         rate, frames, channels, width = f.getframerate(), f.getnframes(), f.getnchannels(), f.getsampwidth()
         if not rate or not frames or width not in (2, 4) or channels not in (1, 2):
@@ -62,6 +74,12 @@ def inspect_wav(path: Path) -> dict:
                 "silence_share": round(silent / max(total_samples, 1), 4),
                 "rms_dbfs": round(20 * math.log10(max(rms, 1e-9)), 2)}
 
+
+def inspect_wav(path: Path) -> dict:
+    try:
+        return _inspect_wav(path)
+    except wave.Error as exc:
+        raise ValueError("Beschädigter WAV-Header: " + str(exc)) from exc
 
 class MockEngine:
     """Nur für reproduzierbare CI-Tests; niemals als Qualitätsstimme anbieten."""
