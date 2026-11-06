@@ -99,7 +99,7 @@ class SkipTocTests(unittest.TestCase):
             pipeline.configure(book_id, {"skip_toc": False})
             s = pipeline.load(book_id)
             self.assertEqual(len(s["segments"]), 6)
-            self.assertEqual(len(s["chapters"]), 2)  # metadata previously created; original metadata is not rebuilt
+            self.assertEqual(len(s["chapters"]), 3)  # metadata and chapter marks rebuilt
             self.assertIsNone(s["approved_fingerprint"])
             self.assertEqual(s["exclusions"], [])
             pipeline.configure(book_id, {"skip_toc": True})
