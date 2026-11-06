@@ -49,6 +49,14 @@ class BookTests(unittest.TestCase):
         self.epub = self.folder / "book.epub"
         fixture(self.epub)
 
+    def test_default_german_narration_is_engaging_and_readable(self):
+        self.assertEqual(pipeline.SETTINGS["speed"], 1.05)
+        instruction = pipeline.SETTINGS["instruction"].casefold()
+        self.assertIn("german", instruction)
+        self.assertIn("brisk", instruction)
+        self.assertIn("easy-to-follow", instruction)
+        self.assertLessEqual(len(pipeline.SETTINGS["instruction"]), 500)
+
     def test_actual_spine_order(self):
         fixture(self.epub, swap=True)
         result = core.read_epub(self.epub)
