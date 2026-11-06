@@ -88,7 +88,7 @@ def inspect_wav(path: Path) -> dict:
 class MockEngine:
     """Nur für reproduzierbare CI-Tests; niemals als Qualitätsstimme anbieten."""
     model_id = "mock-ci"
-    def synthesize(self, text: str, destination: Path, *, speaker: str, instruction: str, seed: int) -> None:
+    def synthesize(self, text: str, destination: Path, *, speaker: str, instruction: str, seed: int, speed: float = 1.0) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with wave.open(str(destination), "wb") as wav:
             wav.setnchannels(1)
@@ -114,7 +114,7 @@ class QwenCustomVoiceEngine:
         self.model = Qwen3TTSModel.from_pretrained(
             MODEL_ID, device_map="cuda:0", dtype=torch.bfloat16,
             attn_implementation=os.getenv("AUDIOBOOK_ATTENTION", "sdpa"))
-    def synthesize(self, text: str, destination: Path, *, speaker: str, instruction: str, seed: int) -> None:
+    def synthesize(self, text: str, destination: Path, *, speaker: str, instruction: str, seed: int, speed: float = 1.0) -> None:
         import soundfile as sf
         if speaker not in VOICES:
             raise ValueError("Unbekannte Qwen-Sprecherstimme")
