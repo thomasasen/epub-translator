@@ -58,6 +58,28 @@ class WebTests(unittest.TestCase):
         self.assertLessEqual(response.json()["config"]["max_chars"], 300)
         self.assertIsNone(response.json()["approved_fingerprint"])
 
+    def test_term_preview_using_mock_backend(self):
+        import shutil
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("FFmpeg fehlt")
+        with patch.dict(os.environ, {"AUDIOBOOK_TEST_MOCK": "1"}):
+            with self.epub.open("rb") as file:
+                imported = self.client.post("/audiobook/api/upload", files={
+                    "file": ("test.epub", file, "application/epub+zip")})
+            self.assertEqual(imported.status_code, 200, imported.text)
+            book_id = imported.json()["id"]
+            url = "/audiobook/api/books/" + book_id
+            config = self.client.put(url + "/config", json={
+                "settings": {"backend": "mock"}, "glossary": {"CRM": "C R M"}})
+            self.assertEqual(config.status_code, 200, config.text)
+            spoken = self.client.post(url + "/term-preview", json={"phrase": "CRM"})
+            self.assertEqual(spoken.status_code, 200, spoken.text)
+            token = spoken.json()["token"]
+            audio = self.client.get(url + "/download/term?token=" + token)
+            self.assertEqual(audio.status_code, 200)
+            self.assertGreater(len(audio.content), 1000)
+            self.assertEqual(self.client.get(url + "/download/term?token=../bad").status_code, 400)
+
     def test_invalid_upload_and_path(self):
         r = self.client.post("/audiobook/api/upload", files={
             "file": ("invalid.epub", b"not an epub", "application/epub+zip")})
