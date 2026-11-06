@@ -21,6 +21,16 @@ jobs:
         run: |
           python3 -c 'from pathlib import Path; t=Path("audiobook/ui.html").read_text(); Path("/tmp/audiobook-ui.js").write_text(t.split("<script>")[1].split("</script>")[0])'
           node --check /tmp/audiobook-ui.js
+      - name: Verify native Qwen integration against pinned TBL version
+        run: |
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/hydropix/TranslateBooksWithLLMs/0cc31bc7f4aeedfcb3fe904eeaebd15d6fa0ad1f/src/web/static/js/index.js -o /tmp/tbl-native-index.js
+          python3 scripts/patch_tbl_tts.py /tmp/tbl-native-index.js --check
+          python3 scripts/patch_tbl_tts.py /tmp/tbl-native-index.js
+          python3 scripts/patch_tbl_tts.py /tmp/tbl-native-index.js
+          cp /tmp/tbl-native-index.js /tmp/tbl-native-index.mjs
+          cp audiobook/tbl-bridge.js /tmp/tbl-bridge.mjs
+          node --check /tmp/tbl-native-index.mjs
+          node --check /tmp/tbl-bridge.mjs
       - name: Unit and mocked integration tests
         run: python3 -m unittest discover -s tests -v
       - name: Nginx reverse-proxy integration
