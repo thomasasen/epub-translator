@@ -18,6 +18,7 @@ ROOT = Path(os.getenv("AUDIOBOOK_ROOT", "/workspace/epub-translator/audiobooks")
 TRANSLATED = Path(os.getenv("AUDIOBOOK_TRANSLATED", "/workspace/epub-translator/translated_files"))
 ACTIVE_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
+CANCEL_EVENT = threading.Event()
 SETTINGS = {
     "backend": "qwen-customvoice", "speaker": "Ryan", "instruction":
     "Speak in clear, measured German. Calm, professional non-fiction narration. "
@@ -98,6 +99,8 @@ def checked_config(new: dict) -> dict:
     if set(new) - set(cfg):
         raise ValueError("Unbekannte Konfigurationsparameter")
     cfg.update(new)
+    if cfg["quality"] not in ("high", "careful"):
+        raise ValueError("Unbekanntes Qualitätsprofil")
     if cfg["backend"] not in ("qwen-customvoice", "mock"):
         raise ValueError("Unbekanntes Modell")
     if cfg["backend"] == "mock" and os.getenv("AUDIOBOOK_TEST_MOCK") != "1":
@@ -200,6 +203,7 @@ def synthesize(book_id: str, *, preview: bool = False, chapter: int | None = Non
     if not ACTIVE_LOCK.acquire(blocking=False):
         raise RuntimeError("Bereits ein anderer TTS-Auftrag aktiv")
     STOP_EVENT.clear()
+    CANCEL_EVENT.clear()
     engine = None
     state = load(book_id)
     try:
@@ -223,7 +227,7 @@ def synthesize(book_id: str, *, preview: bool = False, chapter: int | None = Non
         paths = []
         for item in chosen:
             if STOP_EVENT.is_set():
-                state["status"] = "paused"
+                state["status"] = "cancelled" if CANCEL_EVENT.is_set() else "paused"
                 save(book_id, state)
                 return state
             sig = _signature(state, item)
@@ -256,6 +260,10 @@ def synthesize(book_id: str, *, preview: bool = False, chapter: int | None = Non
         if engine:
             engine.close()
             engine = None
+        if STOP_EVENT.is_set():
+            state["status"] = "cancelled" if CANCEL_EVENT.is_set() else "paused"
+            save(book_id, state)
+            return state
         if preview:
             _preview_file(book_id, paths, state["config"])
             state["status"] = "preview_ready"
@@ -263,6 +271,9 @@ def synthesize(book_id: str, *, preview: bool = False, chapter: int | None = Non
             make_export(book_id)
             state["status"] = "completed"
         else:
+            # Existing M4B is now stale after an individual segment change.
+            if force_id is not None:
+                (project_path(book_id) / "book.m4b").unlink(missing_ok=True)
             state["status"] = "partial_ready"
         save(book_id, state)
         return state
