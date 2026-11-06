@@ -13,8 +13,8 @@ from pydantic import BaseModel
 
 from .core import safe_path
 from .engine import MODEL_ID, VOICES
-from .pipeline import (ROOT, TRANSLATED, STOP_EVENT, ACTIVE_LOCK, approve, configure,
-                       create_book, load, project_path, quality, synthesize)
+from .pipeline import (ROOT, TRANSLATED, STOP_EVENT, CANCEL_EVENT, ACTIVE_LOCK, approve, configure,
+                       create_book, load, project_path, quality, synthesize, make_export)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 CURRENT = None
@@ -163,6 +163,33 @@ def pause(book_id: str):
     STOP_EVENT.set()
     return {"pause_requested": True}
 
+
+@app.post("/audiobook/api/books/{book_id}/cancel")
+def cancel(book_id: str):
+    try:
+        load(book_id)
+    except (ValueError, OSError) as exc:
+        raise bad(exc)
+    CANCEL_EVENT.set()
+    STOP_EVENT.set()
+    return {"cancel_requested": True, "note": "Bereits generierte Segmente bleiben vorhanden"}
+
+
+@app.post("/audiobook/api/books/{book_id}/export")
+def export(book_id: str):
+    if not ACTIVE_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "Sprachgenerierung aktiv")
+    try:
+        make_export(book_id)
+        state = load(book_id)
+        state["status"] = "completed"
+        from .pipeline import save
+        save(book_id, state)
+        return {"ready": True}
+    except (ValueError, RuntimeError, OSError) as exc:
+        raise bad(exc)
+    finally:
+        ACTIVE_LOCK.release()
 
 @app.get("/audiobook/api/books/{book_id}/quality")
 def report(book_id: str):
