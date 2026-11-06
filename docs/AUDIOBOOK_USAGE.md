@@ -12,15 +12,68 @@ RunPod: GPU 24 GB oder 48 GB, persistenter Mount `/workspace`, HTTP-Port **nur 3
 
 Nach Prüfung und anschließendem Merge kann der reguläre `main/bootstrap.sh`-Startbefehl verwendet werden (mit `EPUB_DEPLOY_REF=main` oder ohne Variable).
 
+## Neue deutsche Muttersprachler-Stimme (Thorsten)
+
+**Standard in beiden Oberflächen:** `Qwen3 Base Deutsch (Thorsten)` mit
+`language="German"`. Anders als die vorherige Stimme `Ryan` wird diese
+Stimme aus einer echten deutschsprachigen Aufnahme des CC0-lizenzierten
+Thorsten-Voice-Datensatzes 2022.10 geklont. Die Stimme klingt damit nicht
+automatisch perfekt oder akzentfrei: Nach dem ersten Generieren ist ein
+manueller Hörtest zwingend. Die bisherige CustomVoice-Auswahl bleibt erhalten,
+wird aber wegen möglicher englischer bzw. anderer Akzente nicht mehr
+vorausgewählt. Der Standard beträgt weiter **1,05×**.
+
+**Erster Start:** Die TTS-App lädt bei der ersten Qwen3-Base-Sprachprobe
+eine geeignete neutral gesprochene deutsche Thorsten-Aufnahme samt exaktem
+Transkript über den öffentlichen Hugging-Face-Datasets-Server. Die Aufnahme
+wird nach Mono-PCM-WAV konvertiert und zusammen mit Quellen- und
+Lizenzinformationen in `/workspace/epub-translator/voices/` dauerhaft
+gespeichert. Das Modell `Qwen/Qwen3-TTS-12Hz-1.7B-Base` wird separat
+von Hugging Face geladen und ebenfalls im persistierten HF-Cache
+gespeichert. Beim nächsten Start sind diese Downloads nicht erneut
+erforderlich. Bei Netzwerkfehlern wird kein englischer Sprecher als
+stillschweigender Fallback verwendet.
+
+**Alternative `Thorsten CosyVoice3`:** Das deutsche Fine-Tuning
+`Thorsten-Voice/CosyVoice3` (Apache 2.0) wird ebenfalls als auswählbarer
+TTS-Anbieter angeboten. Da die offizielle Distribution einen separaten
+Docker-Dienst voraussetzt und RunPod-Pods nicht zwangsläufig verschachteltes
+Docker/NVIDIA Container Toolkit unterstützen, wird dieser Dienst **nicht**
+automatisch im bestehenden Pod installiert. Die Auswahl ist nur freigeschaltet,
+wenn die lokale `http://127.0.0.1:8000/health`-Schnittstelle ein
+Thorsten-Modell bestätigt. Kein öffentlicher Port 8000 öffnen.
+
+Auf einem Linux-Host mit Docker und NVIDIA Container Toolkit kann man
+den offiziellen CosyVoice3-Thorsten-Dienst so starten:
+
+```bash
+docker run --rm --gpus all --name thorsten-cosyvoice \
+  -p 127.0.0.1:8000:8000 \
+  -v thorsten_cosyvoice_models:/app/CosyVoice/pretrained_models \
+  thorstenvoice/cosyvoice-tts:cosyvoice3
+```
+
+Wichtig: Diese Anleitung gilt nur, wenn Docker mit NVIDIA-GPU-Zugriff
+tatsächlich verfügbar ist. Die Qwen3-Base-Variante benötigt Docker nicht.
+Die CosyVoice3-API empfängt Text über `POST /tts` mit Formularfeldern
+`text` und `speed` und gibt PCM-WAV zurück. Tempo wird dort nativ
+eingestellt, deshalb erfolgt keine zusätzliche Beschleunigung in FFmpeg.
+
+Quellen:
+- Deutsches CC0-Dataset: https://huggingface.co/datasets/Thorsten-Voice/TV-44kHz-Full
+- Qwen3-TTS Base Cloning: https://github.com/QwenLM/Qwen3-TTS
+- Deutsches CosyVoice3-Modell: https://huggingface.co/Thorsten-Voice/CosyVoice3
+- Offizielle CosyVoice3-API: https://www.thorsten-voice.de/anleitungen/cosyvoice/
+
 ## Zwei Oberflächen, ein Qwen3-TTS-Backend
 
 Das ursprüngliche **TBL „Generate Audiobook“**-Fenster bleibt erhalten. Für EPUB-Dateien
-erhält es zusätzlich **Qwen3-TTS (lokale GPU · deutsches Fachbuch)** neben den
+erhält es zusätzlich **Deutsche Hörbuchstimme (lokale GPU)** neben den
 bestehenden Optionen **Edge TTS** und **Chatterbox**. Die voreingestellte
 TBL-Zielsprache wird auf Deutsch gestellt; die anderen Sprachen und Anbieter
 bleiben auswählbar.
 
-**Qwen im TBL-Dialog:** EPUB in der TBL-Dateiliste auswählen → Kopfhörer-
+**Deutsche Stimme im TBL-Dialog:** EPUB in der TBL-Dateiliste auswählen → Kopfhörer-
 Symbol → Qwen3-TTS wählen → Sprecherstimme und Tempo einstellen →
 **Sprachprobe erzeugen** → Probe anhören → explizit freigeben →
 Hörbuch erstellen → M4B im selben Dialog herunterladen. Für Glossar,

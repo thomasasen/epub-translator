@@ -13,8 +13,14 @@ jobs:
           shellcheck -S warning bootstrap.sh
       - name: Compile Python
         run: python3 -m compileall -q audit_epub.py audiobook scripts tests
-      - name: Install FFmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - name: Ensure FFmpeg and FFprobe
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg >/dev/null
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
       - name: Install web API test dependencies
         run: python3 -m pip install --user --break-system-packages fastapi==0.115.12 python-multipart==0.0.20 httpx==0.28.1
       - name: Check frontend JavaScript syntax
@@ -31,6 +37,16 @@ jobs:
           cp audiobook/tbl-bridge.js /tmp/tbl-bridge.mjs
           node --check /tmp/tbl-native-index.mjs
           node --check /tmp/tbl-bridge.mjs
+      - name: Validate the German Thorsten reference API and audio download
+        run: |
+          AUDIOBOOK_VOICE_CACHE="$(mktemp -d)" python3 - <<'PY'
+          from audiobook.german_reference import ensure_thorsten_reference
+          from audiobook.engine import inspect_wav
+          path, transcript = ensure_thorsten_reference()
+          assert len(transcript) >= 70
+          assert 3 <= inspect_wav(path)["seconds"] <= 20
+          print("Real CC0 German reference downloaded and decoded successfully.")
+          PY
       - name: Unit and mocked integration tests
         run: python3 -m unittest discover -s tests -v
       - name: Nginx reverse-proxy integration

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from .core import safe_path
-from .engine import MODEL_ID, VOICES
+from .engine import MODEL_ID, BASE_MODEL_ID, COSYVOICE_MODEL_ID, VOICES, cosyvoice_available
 from .pipeline import (ROOT, TRANSLATED, STOP_EVENT, CANCEL_EVENT, ACTIVE_LOCK, approve, configure,
                        create_book, load, project_path, quality, synthesize, make_export, preview_term)
 
@@ -243,5 +243,18 @@ def download(book_id: str, kind: str, chapter: int | None = None, token: str | N
 
 @app.get("/audiobook/api/capabilities")
 def capabilities():
-    return {"engines": [{"id": "qwen-customvoice", "model": MODEL_ID}],
-            "voices": VOICES}
+    return {
+        "default_backend": "qwen-base-german",
+        "german_voice": "Thorsten",
+        "engines": [
+            {"id": "qwen-base-german", "model": BASE_MODEL_ID,
+             "label": "Deutsch · Thorsten (Qwen3 Base)", "available": True,
+             "note": "Die CC0-Referenz wird bei der ersten Sprachprobe heruntergeladen."},
+            {"id": "cosyvoice-thorsten", "model": COSYVOICE_MODEL_ID,
+             "label": "Deutsch · Thorsten (CosyVoice3)", "available": cosyvoice_available(),
+             "note": "Benötigt den offiziellen Thorsten-CosyVoice3-Dienst auf localhost:8000."},
+            {"id": "qwen-customvoice", "model": MODEL_ID,
+             "label": "Qwen3 CustomVoice (Akzent möglich)", "available": True}
+        ],
+        "voices": VOICES
+    }

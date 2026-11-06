@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from .core import atomic_json, checksum, load_glossary, read_epub, safe_path, segments
-from .engine import MODEL_ID, create_engine, inspect_wav
+from .engine import MODEL_ID, MODEL_IDS, create_engine, inspect_wav
 
 ROOT = Path(os.getenv("AUDIOBOOK_ROOT", "/workspace/epub-translator/audiobooks"))
 TRANSLATED = Path(os.getenv("AUDIOBOOK_TRANSLATED", "/workspace/epub-translator/translated_files"))
@@ -20,7 +20,7 @@ ACTIVE_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
 CANCEL_EVENT = threading.Event()
 SETTINGS = {
-    "backend": "qwen-customvoice", "speaker": "Ryan", "instruction":
+    "backend": "qwen-base-german", "speaker": "Thorsten", "instruction":
     "Narrate this German non-fiction audiobook in an engaging, confident and natural voice. "
     "Keep a slightly brisk, easy-to-follow pace with crisp pronunciation, lively but subtle "
     "intonation and meaningful pauses. Sound interested in the subject, never sleepy, rushed "
@@ -103,13 +103,15 @@ def checked_config(new: dict) -> dict:
     cfg.update(new)
     if cfg["quality"] not in ("high", "careful"):
         raise ValueError("Unbekanntes Qualitätsprofil")
-    if cfg["backend"] not in ("qwen-customvoice", "mock"):
+    if cfg["backend"] not in ("qwen-customvoice", "qwen-base-german", "cosyvoice-thorsten", "mock"):
         raise ValueError("Unbekanntes Modell")
     if cfg["backend"] == "mock" and os.getenv("AUDIOBOOK_TEST_MOCK") != "1":
         raise ValueError("Mock-Engine ist nur für isolierte Tests erlaubt")
     from .engine import VOICES
-    if cfg["backend"] != "mock" and cfg["speaker"] not in VOICES:
-        raise ValueError("Unbekannte Stimme")
+    if cfg["backend"] == "qwen-customvoice" and cfg["speaker"] not in VOICES:
+        raise ValueError("Unbekannte CustomVoice-Stimme")
+    if cfg["backend"] in ("qwen-base-german", "cosyvoice-thorsten") and cfg["speaker"] != "Thorsten":
+        raise ValueError("Deutsche Stimmen benötigen die Thorsten-Sprecheridentität")
     if not (0.8 <= float(cfg["speed"]) <= 1.2):
         raise ValueError("Geschwindigkeit 0,8..1,2")
     if not (120 <= int(cfg["max_chars"]) <= 1200):
@@ -169,7 +171,7 @@ def _wanted_preview(state: dict) -> list:
 
 def _signature(state: dict, item: dict) -> str:
     return checksum(json.dumps([item["text"], item["kind"], state["configuration_sha256"],
-                                MODEL_ID if state["config"]["backend"] == "qwen-customvoice" else "mock-ci"],
+                                MODEL_IDS[state["config"]["backend"]]],
                                ensure_ascii=False, sort_keys=True))
 
 
@@ -192,12 +194,17 @@ def _ffconcat(paths: list[Path], destination: Path) -> Path:
     return listfile
 
 
+def _post_speed(cfg: dict) -> float:
+    # CosyVoice adjusts tempo natively; do not apply FFmpeg atempo twice.
+    return 1.0 if cfg["backend"] == "cosyvoice-thorsten" else float(cfg["speed"])
+
+
 def _preview_file(book_id: str, paths: list[Path], cfg: dict) -> None:
     out = project_path(book_id) / "preview.mp3"
     lst = _ffconcat(paths, out)
     part = out.with_suffix(".part.mp3")
     _run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "concat",
-          "-safe", "0", "-i", str(lst), "-filter:a", f"atempo={cfg['speed']},loudnorm=I=-19:TP=-2:LRA=11",
+          "-safe", "0", "-i", str(lst), "-filter:a", f"atempo={_post_speed(cfg)},loudnorm=I=-19:TP=-2:LRA=11",
           "-c:a", "libmp3lame", "-b:a", "128k", str(part)])
     part.replace(out)
 
@@ -251,7 +258,7 @@ def synthesize(book_id: str, *, preview: bool = False, chapter: int | None = Non
                     engine.synthesize(item["text"], temp,
                                       speaker=state["config"]["speaker"],
                                       instruction=state["config"]["instruction"],
-                                      seed=state["config"]["seed"])
+                                      seed=state["config"]["seed"], speed=state["config"]["speed"])
                     metrics = inspect_wav(temp)
                     if metrics["seconds"] < .25 or metrics["peak_clipped_share"] > .05:
                         raise RuntimeError("Segment-Audio unplausibel oder übersteuert")
@@ -326,10 +333,10 @@ def preview_term(book_id: str, phrase: str) -> str:
             engine = create_engine(state["config"]["backend"])
             engine.synthesize(spoken, wav, speaker=state["config"]["speaker"],
                               instruction=state["config"]["instruction"],
-                              seed=state["config"]["seed"])
+                              seed=state["config"]["seed"], speed=state["config"]["speed"])
             inspect_wav(wav)
             _run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                  "-i", str(wav), "-af", f"atempo={state['config']['speed']}",
+                  "-i", str(wav), "-af", f"atempo={_post_speed(state['config'])}",
                   "-c:a", "libmp3lame", "-b:a", "128k", str(mp3)])
             mp3.replace(destination)
         finally:
@@ -376,12 +383,12 @@ def make_export(book_id: str) -> Path:
               "-safe", "0", "-i", str(concatfile), "-c:a", "pcm_s16le", str(temp)])
         temp.replace(chapter_wav)
         metrics = inspect_wav(chapter_wav)
-        durations.append(metrics["seconds"] / state["config"]["speed"])
+        durations.append(metrics["seconds"] / _post_speed(state["config"]))
         chapter_wavs.append(chapter_wav)
         mp3 = chapter_wav.with_suffix(".mp3")
         mp3_temp = chapter_wav.with_suffix(".part.mp3")
         _run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(chapter_wav),
-              "-af", f"atempo={state['config']['speed']},loudnorm=I=-19:TP=-2:LRA=11",
+              "-af", f"atempo={_post_speed(state['config'])},loudnorm=I=-19:TP=-2:LRA=11",
               "-c:a", "libmp3lame", "-b:a", "128k", str(mp3_temp)])
         mp3_temp.replace(mp3)
     metadata = folder / "chapters" / "chapters.ffmeta"
@@ -403,7 +410,7 @@ def make_export(book_id: str) -> Path:
                 coverfile.write_bytes(archive.read(cover))
                 command += ["-i", str(coverfile)]
     command += ["-map", "0:a:0", "-map_metadata", "1", "-map_chapters", "1",
-                "-af", f"atempo={state['config']['speed']},loudnorm=I=-19:TP=-2:LRA=11",
+                "-af", f"atempo={_post_speed(state['config'])},loudnorm=I=-19:TP=-2:LRA=11",
                 "-c:a", "aac", "-b:a", "128k"]
     if coverfile:
         command += ["-map", "2:v:0", "-c:v", "mjpeg", "-disposition:v", "attached_pic"]
