@@ -121,6 +121,33 @@ class BookTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Freigabe"):
                 pipeline.synthesize(book_id)
 
+    def test_spoken_number_symbols(self):
+        self.assertEqual(core.normalize_spoken("1,5 Mio. € und 12%"),
+                         "1,5 Mio. Euro und 12 Prozent")
+        self.assertEqual(core.normalize_spoken("1.234,56"), "1.234,56")
+
+    def test_cancel_preserves_valid_segment_and_resumes(self):
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("FFmpeg fehlt")
+        from audiobook.engine import MockEngine
+        class StopAfterFirst(MockEngine):
+            def synthesize(self, *args, **kwargs):
+                super().synthesize(*args, **kwargs)
+                pipeline.CANCEL_EVENT.set()
+                pipeline.STOP_EVENT.set()
+
+        with patch.object(pipeline, "ROOT", self.folder / "audiobooks"), \
+             patch.dict(os.environ, {"AUDIOBOOK_TEST_MOCK": "1"}):
+            book_id = pipeline.create_book(self.epub, config={"backend": "mock"})
+            pipeline.synthesize(book_id, preview=True)
+            pipeline.approve(book_id)
+            with patch.object(pipeline, "create_engine", return_value=StopAfterFirst()):
+                status = pipeline.synthesize(book_id)
+            self.assertEqual(status["status"], "cancelled")
+            resumed = pipeline.synthesize(book_id)
+            self.assertEqual(resumed["status"], "completed")
+            self.assertEqual(pipeline.quality(book_id)["missing"], 0)
+
     def test_audio_header_corruption(self):
         p = self.folder / "bad.wav"
         p.write_bytes(b"not a wav")
