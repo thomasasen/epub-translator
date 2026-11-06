@@ -23,22 +23,15 @@ In [RunPod](https://console.runpod.io/pods) ein **Custom Pod Template** erstelle
 bash -lc 'set -euo pipefail; curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/main/bootstrap.sh -o /tmp/epub-bootstrap.sh; exec bash /tmp/epub-bootstrap.sh'
 ```
 
-RunPod überschreibt damit das Docker-CMD; der NVIDIA-Entrypoint des Basis-Images bleibt aktiv. Das Skript installiert selbstständig Ollama, das Modell, Python-Abhängigkeiten und den passwortgeschützten Reverse-Proxy. Ein vollautomatischer Start erfordert ausgehenden Internetzugang.
+RunPod überschreibt damit das Docker-CMD; der NVIDIA-Entrypoint des Basis-Images bleibt aktiv. Das Skript installiert selbstständig Ollama, das Modell, Python-Abhängigkeiten und den Reverse-Proxy ohne zusätzliche Passwortabfrage. Ein vollautomatischer Start erfordert ausgehenden Internetzugang.
 
-## 2. Zwei Pflichtvariablen eintragen
+## 2. Starten und Zugriff ohne zusätzliche Anmeldung
 
-Im Template unter **Environment Variables**:
+Die Variablen `EPUB_USERNAME` und `EPUB_PASSWORD` werden **nicht mehr benötigt**. Falls sie im RunPod-Template gespeichert sind, bitte entfernen. Die Anwendung ist über **RunPod → Connect → HTTP Port 3000** erreichbar und fordert kein Passwort an.
 
-| Name | Wert |
-|---|---|
-| `EPUB_USERNAME` | z. B. `translator` |
-| `EPUB_PASSWORD` | ein starkes Passwort mit **mindestens 12 Zeichen** |
+**Sicherheitshinweis:** Jeder, der die RunPod-Proxy-URL kennt, kann hochgeladene und erzeugte Dateien sehen, neue Aufträge starten und Ressourcen verbrauchen. Den Link nicht teilen und den Pod nicht als öffentlichen Dienst betreiben. TLS bleibt über den RunPod-HTTPS-Proxy verfügbar; interne Ports 5000, 5100 und 11434 nicht exponieren.
 
-Der Start **schlägt ohne diese Variablen absichtlich fehl**. Das Passwort nicht in das öffentliche GitHub-Repository oder in den Startbefehl schreiben. Ein Template mit eingetragenem Passwort nicht öffentlich teilen.
-
-Den Pod anschließend aus dem Template starten. Über **RunPod → Connect → HTTP Port 3000** den HTTPS-Link öffnen (üblicherweise `https://<pod-id>-3000.proxy.runpod.net`). Die Browser-Anmeldung erfolgt mit den beiden Variablen.
-
-Der erste Start kann wegen des großen Modelldownloads und der Paketinstallation dauern. Modelle, Dateien und Checkpoints liegen auf dem persistenten Volume, daher brauchen spätere Starts die Downloads normalerweise nicht erneut.
+Der erste Start kann wegen Modelldownloads und Installation länger dauern. Modelle und Checkpoints liegen auf dem persistenten Volume.
 
 ## 3. Modelle und Qualitätsvorgaben
 
@@ -72,6 +65,10 @@ Alle Projektdateien liegen auf dem RunPod-Volume unter `/workspace/epub-translat
 ├── upstream/           TranslateBooksWithLLMs, Python venv, Checkpoints und Uploads
 ├── ollama-models/      heruntergeladene Modellgewichte
 ├── translated_files/   fertige EPUB-Übersetzungen
+├── deployment/         eigener Deployment-Code mit audiobook/
+├── tts-venv/           separate Hörbuch-Python-Umgebung
+├── hf-cache/          persistente TTS-Modellgewichte
+├── audiobooks/        EPUB-Hörbuch-Jobs, WAV, MP3, M4B, Reports
 └── logs/               ollama.log, translator.log, nginx.log, pip.log
 ```
 
@@ -79,11 +76,11 @@ Ein **Pod-Stopp unterbricht** eine laufende Übersetzung. Das Upstream-Projekt v
 
 RunPod berechnet GPU-Laufzeit, solange der Pod läuft, und gegebenenfalls persistenten Speicher. Ergebnisse nach Abschluss herunterladen und den Pod stoppen.
 
-## 5. Zugriffsschutz
+## 5. Proxy und Hörbuchstudio
 
-Der RunPod-Webproxy ist aus dem Internet erreichbar. Deshalb lauscht **Nginx mit HTTP Basic Auth auf Port 3000**. Die interne Übersetzungs-App wird ausschließlich an `127.0.0.1:5000` und Ollama an `127.0.0.1:11434` gebunden. **Ports 5000 und 11434 niemals in RunPod exponieren.**
+Die Übersetzungsoberfläche bleibt unter `/`, das **Hörbuchstudio** ist unter `/audiobook/` erreichbar. Nginx lauscht auf Port 3000 und leitet an lokale Dienste weiter: Übersetzung `127.0.0.1:5000`, Hörbuch `127.0.0.1:5100`, Ollama `127.0.0.1:11434`. Der ausdrücklich nicht mehr gewünschte Basic-Auth-Passwortschutz ist entfernt.
 
-Der Zugriff über den RunPod-HTTPS-Proxy ist TLS-geschützt. Nginx verlangt das Passwort auch für API-, Upload- und WebSocket-Zugriffe. Dies ist für einen privaten Einzelbenutzer-Pod ausgelegt, nicht für eine öffentliche Mehrbenutzer-Anwendung.
+Für einen Test vom Feature-Branch siehe [Hörbuch-Anleitung](docs/AUDIOBOOK_USAGE.md). Konfiguration, Modellvergleich und Qualitätssicherung stehen in [Architekturentscheidung](docs/AUDIOBOOK_ARCHITECTURE.md) und [Hörbuch-Qualität](docs/AUDIOBOOK_QUALITY.md). Die neue Funktion kann mit `AUDIOBOOK_ENABLED=0` deaktiviert werden. Die für Hörbücher benötigten Pakete und GPU-Modellgewichte sind von der Übersetzungsumgebung getrennt.
 
 ## GPU-Startfehler: `GPU VRAM unreadable`
 
@@ -103,7 +100,7 @@ ollama ps
 # Interner App-Healthcheck
 curl -fsS http://127.0.0.1:5000/api/health
 
-# Muss OHNE Login 401 liefern
+# Muss OHNE Login 200 liefern
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/
 
 tail -n 100 /workspace/epub-translator/logs/translator.log
@@ -133,7 +130,7 @@ Nach dem Ollama-Modelldownload startet das Bootstrapskript nun eine echte Test-I
 
 ## 8. Stand der Validierung
 
-Eine [GitHub-Actions-Prüfung](.github/workflows/shell-lint.yml) kontrolliert Bash-Syntax, ShellCheck sowie synthetische EPUB-Integritätstests. **Ein Live-Test auf einem RunPod-Pod wurde noch nicht durchgeführt**; insbesondere GPU-Erkennung, WebSocket, Passwortanmeldung und eine vollständige EPUB-Übersetzung müssen dort getestet werden.
+Eine [GitHub-Actions-Prüfung](.github/workflows/shell-lint.yml) kontrolliert Bash-Syntax, ShellCheck sowie synthetische EPUB-Integritätstests. **Ein Live-Test auf einem RunPod-Pod wurde noch nicht durchgeführt**; insbesondere GPU-Erkennung, WebSocket, Passwortfreiheit, Hörbuchproduktion und eine vollständige EPUB-Übersetzung müssen dort getestet werden.
 
 **Quellen:** [TranslateBooksWithLLMs](https://github.com/hydropix/TranslateBooksWithLLMs) · [Upstream-Dokumentation](https://github.com/hydropix/TranslateBooksWithLLMs/blob/main/docs/PROVIDERS.md) · [RunPod-Beispieltemplate](https://github.com/runpod-workers/pod-template).
 
