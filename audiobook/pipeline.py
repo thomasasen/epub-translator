@@ -21,8 +21,10 @@ STOP_EVENT = threading.Event()
 CANCEL_EVENT = threading.Event()
 SETTINGS = {
     "backend": "qwen-customvoice", "speaker": "Ryan", "instruction":
-    "Speak in clear, measured German. Calm, professional non-fiction narration. "
-    "Natural punctuation pauses, no dramatic emphasis.",
+    "Narrate in natural, fluent Standard German, like a professional non-fiction audiobook. "
+    "Speak calmly and clearly, with warm but restrained intonation, natural sentence rhythm, "
+    "subtle emphasis and realistic pauses. Maintain a consistent voice and conversational flow. "
+    "Avoid theatrical delivery, robotic cadence, exaggerated emotion and artificial breath sounds.",
     "speed": 1.0, "max_chars": 400, "seed": 1106,
     "captions": False, "notes": False, "quality": "high",
 }
