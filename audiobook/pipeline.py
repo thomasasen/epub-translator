@@ -145,6 +145,10 @@ def configure(book_id: str, values: dict | None = None, glossary: dict | None = 
         state["approved_fingerprint"] = None
         state["status"] = "prepared"
     state.update({"config": cfg, "glossary": words, "configuration_sha256": fp,
+                  "chapters": [{"id": chapter["id"], "title": chapter["title"],
+                                "characters": chapter["characters"]}
+                               for chapter in parsed["chapters"]],
+                  "estimated_minutes": round(sum(chapter["characters"] for chapter in parsed["chapters"]) / 900, 1),
                   "exclusions": parsed["exclusions"],
                   "segments": _build_segments(parsed["chapters"], words, cfg)})
     save(book_id, state)
