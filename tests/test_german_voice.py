@@ -36,7 +36,7 @@ class GermanVoiceTests(unittest.TestCase):
     def test_pinned_cc0_recording_selection(self):
         entry = {
             "text": "Der wichtigste Teil einer guten Vertriebsstrategie besteht darin, den Kunden wirklich zu verstehen.",
-            "audio": {"src": "https://datasets-server.huggingface.co/assets/reference.wav"},
+            "audio": [{"src": "https://datasets-server.huggingface.co/assets/reference.wav"}],
             "microphone": "good_rodePodcaster",
             "speaker": "Thorsten Müller",
             "durationSeconds": 7.8,
@@ -46,7 +46,7 @@ class GermanVoiceTests(unittest.TestCase):
         with patch.object(german_reference, "_read_https", return_value=response) as rd:
             row, src = german_reference._dataset_row()
         self.assertEqual(row["text"], entry["text"])
-        self.assertEqual(src, entry["audio"]["src"])
+        self.assertEqual(src, entry["audio"][0]["src"])
         self.assertIn("TV-2022.10-Neutral", rd.call_args.args[0])
 
     def test_reference_audio_cached_with_exact_transcript(self):
