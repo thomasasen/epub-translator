@@ -69,15 +69,26 @@ def _dataset_row() -> tuple[dict, str]:
         mic = str(entry.get("microphone", "")).lower()
         speaker = str(entry.get("speaker", "")).lower()
         duration = float(entry.get("durationSeconds") or 0)
-        if (isinstance(src, str) and isinstance(text, str) and 70 <= len(text) <= 170
-                and 5 <= duration <= 15 and "rode" in mic and "thorsten" in speaker):
-            candidates.append((result.get("row_idx", 0), entry, src))
+        # This public dataset already selects neutral German Thorsten sessions.
+        # Some HF rows omit microphone/speaker details: rank those fields rather
+        # than rejecting otherwise valid recordings.
+        if isinstance(src, str) and isinstance(text, str) and 35 <= len(text) <= 200:
+            score = (int("rode" in mic), int("thorsten" in speaker),
+                     int(5 <= duration <= 15), int(70 <= len(text) <= 170))
+            candidates.append((score, result.get("row_idx", 0), entry, src))
     if not candidates:
+        sample = [
+            {"fields": sorted(list(x.get("row", {})))[:25],
+             "audio": str(x.get("row", {}).get("audio", ""))[:160],
+             "text_length": len(str(x.get("row", {}).get("text", "")))}
+            for x in rows[:2] if isinstance(x.get("row"), dict)
+        ]
         raise RuntimeError(
-            "Keine passende deutsche Referenzaufnahme im öffentlichen Thorsten-Datensatz gefunden. "
-            "Bitte die Datensatzquelle prüfen; es wird NICHT auf die englische Ryan-Stimme gewechselt."
+            "Keine geeignete deutsche Referenz im Thorsten-Datensatz: " +
+            json.dumps(sample, ensure_ascii=False)[:700]
         )
-    _, selected, src = sorted(candidates, key=lambda x: x[0])[0]
+    _, _, selected, src = sorted(candidates, key=lambda x: (
+        tuple(-s for s in x[0]), x[1]))[0]
     return selected, src
 
 
