@@ -145,6 +145,11 @@ if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
     -o /tmp/epub-tbl-qwen-patch.py
   python3 /tmp/epub-tbl-qwen-patch.py "$APP/src/web/static/js/index.js" ||
     die "TBL native Qwen integration failed; refusing a partial UI deployment."
+else
+  # The extra provider requires the audiobook service; remove our overlay when disabled.
+  if grep -Fq TBL_QWEN_BRIDGE_PATCH_V1 "$APP/src/web/static/js/index.js" 2>/dev/null; then
+    git -C "$APP" restore -- src/web/static/js/index.js
+  fi
 fi
 [[ -x .venv/bin/python ]] || python3 -m venv .venv
 REQ_SHA=$(sha256sum requirements.txt | cut -d' ' -f1)
