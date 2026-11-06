@@ -42,6 +42,11 @@ progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{mar
 <p class="hint">JSON-Format: Originalbegriff → gesprochene Schreibweise. Ausschließlich die TTS-Eingabe wird angepasst, nicht das EPUB.</p>
 <label for="glossary">Fachbegriffe</label><textarea id="glossary" spellcheck="false"></textarea>
 <div class="buttons"><button id="saveGlossary">Glossar speichern</button></div>
+<div class="field"><label for="term">Aussprache einzelner Begriffe kontrollieren</label>
+<input id="term" placeholder="z. B. MEDDPICC oder Customer Success"></div>
+<button id="termPreview">Begriff vorlesen</button>
+<audio id="termAudio" controls preload="none"></audio>
+<p class="hint">Die Vorschau verwendet die aktuell gespeicherten Einstellungen und benötigt die GPU.</p>
 </section>
 <section class="panel"><h2>4. Probe und Produktion</h2>
 <p class="hint">Zuerst eine repräsentative Probe erzeugen und anhören. Die Vollproduktion wird erst nach ausdrücklicher Freigabe entsperrt.</p>
@@ -128,6 +133,14 @@ wire("import",async function(){var name=el("translated").value;if(!name)throw Er
 wire("open",async function(){await openBook(el("books").value);});
 wire("save",async function(){await saveSettings(false);});
 wire("saveGlossary",async function(){await saveSettings(true);});
+wire("termPreview",async function(){
+  if(!current)throw Error("Erst ein Projekt wählen.");
+  var phrase=el("term").value.trim();
+  if(!phrase)throw Error("Begriff oder kurze Phrase eingeben.");
+  var item=await post("/books/"+current+"/term-preview",{phrase:phrase});
+  el("termAudio").src="/audiobook/api/books/"+current+"/download/term?token="+item.token;
+  await el("termAudio").play().catch(function(){message("Begriffsvorschau generiert. Wiedergabe mit Play starten.");});
+});
 wire("preview",async function(){await start({preview:true});});
 wire("approve",async function(){render(await post("/books/"+current+"/approve"));message("Sprachprobe freigegeben.");});
 wire("run",async function(){await start({});});
