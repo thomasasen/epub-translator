@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hörbuchstudio · EPUB Translator</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e9edf5;background:#11151c;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0}header{padding:26px max(24px,calc((100vw - 1130px)/2));border-bottom:1px solid #323944;background:#171d26}
+header small{color:#a4b2c6}h1{font-size:27px;font-weight:650;margin:5px 0}h2{font-size:19px;margin:0 0 17px;font-weight:600}
+main{max-width:1180px;margin:25px auto;padding:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.panel{background:#1a202a;border:1px solid #303a49;border-radius:16px;padding:24px;min-width:0}
+.full{grid-column:1/-1}.hint{color:#a9b5c5;font-size:13px;line-height:1.6}
+label{display:block;font-size:13px;color:#a8b7c9;margin:0 0 6px}input,select,textarea{width:100%;border:1px solid #4a5665;border-radius:8px;padding:10px 11px;background:#111820;color:#edf0f7;font:inherit}
+input:focus,select:focus,textarea:focus{outline:2px solid #6daee7;outline-offset:1px}textarea{min-height:180px;resize:vertical;font-family:ui-monospace,monospace;font-size:13px}
+button,.button{cursor:pointer;border:1px solid #455368;border-radius:9px;background:#303d51;color:white;font:inherit;padding:10px 13px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+button:hover,.button:hover{background:#3b4c62}button.primary{background:#3c84cc;border-color:#4a98e6}button:disabled{opacity:.5;cursor:not-allowed}
+.buttons{display:flex;gap:9px;flex-wrap:wrap;margin:15px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}.field{margin-bottom:15px}
+#status{white-space:pre-wrap;background:#111820;padding:13px;border-radius:8px;min-height:110px;max-height:230px;overflow:auto;font-size:13px}
+#message{font-size:13px;color:#b5d6f2;margin:10px 0}audio{display:block;width:100%;margin:16px 0}
+#chapters{margin:0;padding-left:20px;max-height:220px;overflow:auto;line-height:1.9;color:#b6c5d8}
+progress{width:100%;height:14px;accent-color:#4d9fdf}nav a{color:#b2d7f9}nav{margin-top:9px}
+@media(max-width:780px){main{grid-template-columns:1fr}.full{grid-column:auto}.grid{grid-template-columns:1fr}}
+</style></head>
+<body><header><small>EPUB TRANSLATOR / HÖRBUCHSTUDIO</small><h1>Fachbücher als Hörbuch</h1><nav><a href="/">Zur EPUB-Übersetzung</a></nav></header>
+<main>
+<section class="panel"><h2>1. Buch auswählen</h2>
+<div class="field"><label for="file">EPUB hochladen</label><input id="file" type="file" accept=".epub"></div>
+<button id="upload" class="primary">EPUB importieren</button>
+<div class="field" style="margin-top:22px"><label for="translated">Bereits übersetztes EPUB</label><select id="translated"></select></div>
+<button id="import">Aus Übersetzungen übernehmen</button>
+<div class="field" style="margin-top:22px"><label for="books">Hörbuchprojekte</label><select id="books"></select></div>
+<button id="open">Projekt öffnen</button><p class="hint">Die Reihenfolge stammt aus der EPUB-Spine. Tabellen und Auslassungen werden protokolliert.</p></section>
+<section class="panel"><h2>2. Stimme und Qualität</h2>
+<div class="grid"><div class="field"><label for="voice">Sprecherstimme</label><select id="voice"></select></div>
+<div class="field"><label for="speed">Sprechtempo</label><select id="speed"><option value="0.9">Ruhig · 0,9×</option><option value="1">Natürlich · 1,0×</option><option value="1.05" selected>Lebendig · 1,05× (Standard)</option><option value="1.1">Zügig · 1,1×</option></select></div></div>
+<div class="grid"><div class="field"><label for="chars">Segmentlänge</label><select id="chars"><option value="300">300 Zeichen</option><option value="400" selected>400 Zeichen</option><option value="600">600 Zeichen</option></select></div>
+<div class="field"><label for="model">TTS-Modell</label><select id="model"><option value="qwen-customvoice">Qwen3-TTS 1.7B</option></select></div></div>
+<div class="field"><label for="quality">Qualitätsprofil</label><select id="quality"><option value="high">Hochwertig (Standard)</option><option value="careful">Sorgfältig (kürzere Segmente)</option></select></div>
+<div class="field"><label for="instruction">Sprechanweisung</label><input id="instruction"></div>
+<div class="grid"><div><label><input id="captions" style="width:auto" type="checkbox"> Bildunterschriften vorlesen</label></div><div><label><input id="notes" style="width:auto" type="checkbox"> Fußnoten vorlesen</label></div></div>
+<div class="buttons"><button id="save">Einstellungen übernehmen</button></div>
+</section>
+<section class="panel"><h2>3. Ausspracheglossar</h2>
+<p class="hint">JSON-Format: Originalbegriff → gesprochene Schreibweise. Ausschließlich die TTS-Eingabe wird angepasst, nicht das EPUB.</p>
+<label for="glossary">Fachbegriffe</label><textarea id="glossary" spellcheck="false"></textarea>
+<div class="buttons"><button id="saveGlossary">Glossar speichern</button></div>
+<div class="field"><label for="term">Aussprache einzelner Begriffe kontrollieren</label>
+<input id="term" placeholder="z. B. MEDDPICC oder Customer Success"></div>
+<button id="termPreview">Begriff vorlesen</button>
+<audio id="termAudio" controls preload="none"></audio>
+<p class="hint">Die Vorschau verwendet die aktuell gespeicherten Einstellungen und benötigt die GPU.</p>
+</section>
+<section class="panel"><h2>4. Probe und Produktion</h2>
+<p class="hint">Zuerst eine repräsentative Probe erzeugen und anhören. Die Vollproduktion wird erst nach ausdrücklicher Freigabe entsperrt.</p>
+<div class="buttons"><button id="preview" class="primary">Sprachprobe erzeugen</button><button id="approve">Sprachprobe freigeben</button></div>
+<audio id="audio" controls preload="none"></audio>
+<div class="buttons"><button id="run" class="primary">Ganzes Hörbuch erzeugen</button><button id="pause">Nach Segment pausieren</button><button id="cancel">Auftrag abbrechen</button><button id="resume">Fortsetzen</button></div>
+<div class="field"><label for="segment">Fehlerhaftes Segment (z.B. 0001-00002)</label><input id="segment" placeholder="0001-00002"></div><button id="rerender">Segment erneut generieren</button>
+</section>
+<section class="panel full"><h2>5. Status und Export</h2>
+<div id="booktitle" class="hint">Noch kein Projekt gewählt.</div><progress id="progress" value="0" max="1"></progress><div id="status"></div>
+<div id="message" role="status" aria-live="polite"></div>
+<div class="buttons"><a class="button" id="m4b" href="#" download>Vollständiges M4B</a><a class="button" id="qualityFile" href="#" download>Qualitätsbericht als JSON</a><button id="qa">Qualität prüfen</button><button id="export">M4B nach Korrekturen neu erstellen</button></div>
+<div class="grid"><div><h2>Kapitel</h2><ol id="chapters"></ol></div><div><h2>Wichtige Hinweise</h2>
+<p class="hint">Der Zugriff ist ohne zusätzliches Passwort möglich. Jeder mit dem RunPod-Link kann diese Oberfläche und ihre Dateien öffnen. Dienste für TTS und Übersetzung bleiben lokal.</p>
+<p class="hint">Die Qualitätssicherung meldet Verdachtsfälle; eine manuelle Hörprüfung bleibt notwendig. Sprachsynthese darf keine laufende Übersetzung unterbrechen.</p></div></div></section>
+</main>
+<script>
+"use strict";
+var current = null;
+var editDirty = false;
+function el(id){return document.getElementById(id);}
+function message(text){el("message").textContent=text;}
+async function request(path,options){
+  var response=await fetch("/audiobook/api"+path,options||{});
+  var data=await response.json();
+  if(!response.ok)throw Error(data.detail||"HTTP "+response.status);
+  return data;
+}
+async function post(path,data){return request(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data||{})});}
+function option(select,value,text){
+  var e=document.createElement("option");e.value=value;e.textContent=text;select.appendChild(e);
+}
+async function refreshLists(){
+  var books=await request("/books");el("books").replaceChildren();
+  books.forEach(function(x){option(el("books"),x.id,x.title+" · "+x.status);});
+  var names=await request("/translated");el("translated").replaceChildren();
+  names.forEach(function(x){option(el("translated"),x,x);});
+}
+function link(kind,element){element.href=current?("/audiobook/api/books/"+current+"/download/"+kind):"#";}
+function render(s){
+  el("booktitle").textContent=s.title+" · "+s.author+" · geschätzt "+s.estimated_minutes+" Minuten Audio";
+  el("status").textContent="Status: "+s.status+"\\nFortschritt: "+(s.done||0)+" / "+(s.total||s.segments.length)+" Segmente\\nHinweise/Auslassungen: "+s.exclusions.length+"\\n"+(s.errors||[]).join("\\n");
+  el("progress").max=s.total||1;el("progress").value=s.done||0;
+  if(!editDirty){
+    el("voice").value=s.config.speaker;el("speed").value=String(s.config.speed);
+    el("chars").value=String(s.config.max_chars);el("quality").value=s.config.quality;
+    el("instruction").value=s.config.instruction;
+    el("captions").checked=s.config.captions;el("notes").checked=s.config.notes;
+    el("glossary").value=JSON.stringify(s.glossary,null,2);
+  }
+  el("chapters").replaceChildren();s.chapters.forEach(function(ch){
+    var li=document.createElement("li");li.textContent=ch.title+" ("+ch.characters+" Zeichen) ";
+    var a=document.createElement("a");a.textContent="MP3";a.href="/audiobook/api/books/"+current+"/download/chapter?chapter="+ch.id;
+    a.style.color="#92cfff";li.appendChild(a);el("chapters").appendChild(li);
+  });
+  link("m4b",el("m4b"));link("quality",el("qualityFile"));
+  el("approve").disabled=s.status!=="preview_ready";
+  el("run").disabled=s.approved_fingerprint!==s.configuration_sha256;
+  el("resume").disabled=s.approved_fingerprint!==s.configuration_sha256;
+  if(["preview_ready","approved","completed","partial_ready"].includes(s.status)){
+    var previewUrl="/audiobook/api/books/"+current+"/download/preview";
+    if(el("audio").getAttribute("src")!==previewUrl)el("audio").setAttribute("src",previewUrl);
+  }
+}
+async function refresh(){if(current)render(await request("/books/"+current));}
+async function openBook(id){if(!id)return;current=id;editDirty=false;el("audio").removeAttribute("src");await refresh();message("Projekt geladen.");}
+async function saveSettings(glossary){
+  if(!current)throw Error("Erst ein Buch auswählen.");
+  var settings={speaker:el("voice").value,speed:Number(el("speed").value),quality:el("quality").value,
+    max_chars:Number(el("chars").value),instruction:el("instruction").value,
+    captions:el("captions").checked,notes:el("notes").checked};
+  var body={settings:settings};
+  if(glossary)body.glossary=JSON.parse(el("glossary").value);
+  var response=await request("/books/"+current+"/config",{method:"PUT",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  editDirty=false;render(response);message("Gespeichert. Bei Änderungen muss die Sprachprobe erneut freigegeben werden.");
+}
+async function start(options){if(!current)throw Error("Erst ein Buch auswählen.");await post("/books/"+current+"/run",options);message("Auftrag gestartet.");}
+function wire(id,fn){el(id).addEventListener("click",async function(){try{await fn();}catch(e){message("Fehler: "+e.message);}});}
+wire("upload",async function(){var file=el("file").files[0];if(!file)throw Error("EPUB-Datei auswählen.");
+  var body=new FormData();body.append("file",file);var x=await request("/upload",{method:"POST",body:body});
+  await refreshLists();await openBook(x.id);});
+wire("import",async function(){var name=el("translated").value;if(!name)throw Error("EPUB auswählen.");var x=await post("/import-translated",{name:name});await refreshLists();await openBook(x.id);});
+wire("open",async function(){await openBook(el("books").value);});
+wire("save",async function(){await saveSettings(false);});
+wire("saveGlossary",async function(){await saveSettings(true);});
+wire("termPreview",async function(){
+  if(!current)throw Error("Erst ein Projekt wählen.");
+  var phrase=el("term").value.trim();
+  if(!phrase)throw Error("Begriff oder kurze Phrase eingeben.");
+  var item=await post("/books/"+current+"/term-preview",{phrase:phrase});
+  el("termAudio").src="/audiobook/api/books/"+current+"/download/term?token="+item.token;
+  await el("termAudio").play().catch(function(){message("Begriffsvorschau generiert. Wiedergabe mit Play starten.");});
+});
+wire("preview",async function(){await start({preview:true});});
+wire("approve",async function(){render(await post("/books/"+current+"/approve"));message("Sprachprobe freigegeben.");});
+wire("run",async function(){await start({});});
+wire("resume",async function(){await start({});});
+wire("pause",async function(){await post("/books/"+current+"/pause");message("Pause angefordert.");});
+wire("cancel",async function(){await post("/books/"+current+"/cancel");message("Abbruch nach dem laufenden Segment angefordert. Bisherige Segmente bleiben erhalten.");});
+wire("rerender",async function(){await start({force_id:el("segment").value});});
+wire("qa",async function(){var q=await request("/books/"+current+"/quality");message("Prüfung: "+q.missing+" Segmente fehlen, "+q.warnings.length+" Warnungen. Bericht abrufbar.");});
+wire("export",async function(){await post("/books/"+current+"/export");await refresh();message("M4B aus den aktuellen Segmenten neu erstellt.");});
+["voice","speed","chars","quality","instruction","captions","notes","glossary"].forEach(function(id){
+  el(id).addEventListener("input",function(){editDirty=true;});
+  el(id).addEventListener("change",function(){editDirty=true;});
+});
+(async function init(){try{var cap=await request("/capabilities");cap.voices.forEach(function(v){option(el("voice"),v,v);});
+  await refreshLists();if(el("books").options.length)await openBook(el("books").value);
+  setInterval(function(){refresh().catch(function(e){message(e.message);});},3000);
+}catch(e){message(e.message);}})();
+</script></body></html>

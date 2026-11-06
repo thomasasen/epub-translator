@@ -1,4 +1,4 @@
-name: Bootstrap and EPUB audit tests
+name: Bootstrap, EPUB and audiobook tests
 on:
   push:
   pull_request:
@@ -7,13 +7,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Bash syntax
-        run: bash -n bootstrap.sh
-      - name: ShellCheck
-        run: shellcheck -S warning bootstrap.sh
-      - name: Compile audit
-        run: python3 -m py_compile audit_epub.py
-      - name: Synthetic EPUB audit tests
+      - name: Bash syntax and ShellCheck
+        run: |
+          bash -n bootstrap.sh
+          shellcheck -S warning bootstrap.sh
+      - name: Compile Python
+        run: python3 -m compileall -q audit_epub.py audiobook scripts tests
+      - name: Install FFmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - name: Install web API test dependencies
+        run: python3 -m pip install --user --break-system-packages fastapi==0.115.12 python-multipart==0.0.20 httpx==0.28.1
+      - name: Check frontend JavaScript syntax
+        run: |
+          python3 -c 'from pathlib import Path; t=Path("audiobook/ui.html").read_text(); Path("/tmp/audiobook-ui.js").write_text(t.split("<script>")[1].split("</script>")[0])'
+          node --check /tmp/audiobook-ui.js
+      - name: Unit and mocked integration tests
         run: python3 -m unittest discover -s tests -v
-      - name: End-to-end Basic Auth login test
+      - name: Nginx reverse-proxy integration
         run: bash tests/test_nginx_auth.sh

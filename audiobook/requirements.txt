@@ -1,0 +1,7 @@
+# Eigene Laufzeitumgebung; Torch stammt aus dem RunPod-CUDA-Basisimage.
+qwen-tts==0.1.1
+fastapi==0.115.12
+uvicorn==0.34.3
+python-multipart==0.0.20
+soundfile==0.13.1
+# Optionale ASR-Qualitätskontrolle: pip install faster-whisper==1.1.1

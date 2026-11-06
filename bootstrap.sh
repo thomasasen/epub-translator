@@ -9,9 +9,12 @@ REF=${TBL_REF:-0cc31bc7f4aeedfcb3fe904eeaebd15d6fa0ad1f}
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
-[[ -n "${EPUB_USERNAME:-}" && -n "${EPUB_PASSWORD:-}" ]] || die "Set EPUB_USERNAME and EPUB_PASSWORD in RunPod."
-[[ "$EPUB_USERNAME" =~ ^[A-Za-z0-9_.-]+$ ]] || die "Invalid EPUB_USERNAME."
-[[ "$EPUB_PASSWORD" =~ ^.{12,}$ ]] || die "EPUB_PASSWORD needs >= 12 characters."
+# Password protection intentionally disabled; the RunPod proxy URL grants access.
+unset EPUB_USERNAME EPUB_PASSWORD
+DEPLOY_REF=${EPUB_DEPLOY_REF:-main}
+[[ "$DEPLOY_REF" =~ ^[A-Za-z0-9_./-]+$ ]] || die "Invalid EPUB_DEPLOY_REF"
+AUDIOBOOK_ENABLED=${AUDIOBOOK_ENABLED:-1}
+[[ "$AUDIOBOOK_ENABLED" =~ ^[01]$ ]] || die "AUDIOBOOK_ENABLED must be 0 or 1"
 [[ -d /workspace ]] || die "Set RunPod volume mount path to /workspace."
 command -v python3 >/dev/null || die "Base image needs python3."
 command -v curl >/dev/null || die "Base image needs curl."
@@ -20,7 +23,7 @@ command -v curl >/dev/null || die "Base image needs curl."
 # times, retaining the actual nvidia-smi stdout/stderr on failure. Never infer
 # available GPU memory from the CUDA banner or fall back to CPU silently.
 PROBE_SCRIPT=/tmp/epub-probe-gpu.py
-curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/main/scripts/probe_gpu.py \
+curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/${DEPLOY_REF}/scripts/probe_gpu.py \
   -o "$PROBE_SCRIPT"
 if ! VRAM=$(python3 "$PROBE_SCRIPT" --attempts 12 --delay 5); then
   die "GPU probe failed. Inspect the GPU diagnostics above and verify a GPU is attached to the RunPod pod."
@@ -43,20 +46,18 @@ mkdir -p "$BASE" "$LOG" "$BASE/ollama-models" "$BASE/translated_files"
 log "GPU VRAM=$VRAM MiB, Ollama model=$MODEL, context=$CTX"
 
 # Ensure the offline EPUB audit is present on the persistent volume.
-curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/main/audit_epub.py \
+curl -fsSL https://raw.githubusercontent.com/thomasasen/epub-translator/${DEPLOY_REF}/audit_epub.py \
   -o "$BASE/audit_epub.py"
 python3 -m py_compile "$BASE/audit_epub.py"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends curl ca-certificates git python3 python3-venv python3-pip nginx apache2-utils >/dev/null
+apt-get install -y -qq --no-install-recommends curl ca-certificates git python3 python3-venv python3-pip nginx ffmpeg libsndfile1 >/dev/null
 
-# Preserve RunPod's own SSH/Jupyter startup. Without this, overriding Docker
-# CMD disables those services. Never pass EPUB_PASSWORD to /start.sh because
-# the default startup writes environment variables into /etc/rp_environment.
+# Preserve RunPod platform services.
 if [[ -x /start.sh ]]; then
-  log "Starting RunPod platform services in background (without EPUB_PASSWORD) ..."
-  env -u EPUB_PASSWORD /start.sh >"$LOG/runpod-services.log" 2>&1 &
+  log "Starting RunPod platform services ..."
+  /start.sh >"$LOG/runpod-services.log" 2>&1 &
   PID_RUNPOD=$!
 fi
 if ! command -v ollama >/dev/null; then
@@ -69,7 +70,7 @@ ollama serve >"$LOG/ollama.log" 2>&1 &
 PID_OLLAMA=$!
 cleanup() {
   trap - EXIT INT TERM
-  for p in "${PID_WEB:-}" "${PID_APP:-}" "${PID_OLLAMA:-}" "${PID_RUNPOD:-}"; do
+  for p in "${PID_WEB:-}" "${PID_TTS:-}" "${PID_APP:-}" "${PID_OLLAMA:-}" "${PID_RUNPOD:-}"; do
     if [[ -n "$p" ]]; then kill "$p" 2>/dev/null || true; fi
   done
   wait 2>/dev/null || true
@@ -101,7 +102,7 @@ payload = {
     "model": os.environ["EPUB_MODEL_NAME"],
     "prompt": "Translate exactly into German: The door is open.",
     "stream": False,
-    "keep_alive": "30m",
+    "keep_alive": 0,
     "options": {"num_ctx": int(os.environ["EPUB_NUM_CTX"])},
 }
 request = urllib.request.Request(
@@ -149,21 +150,10 @@ export OLLAMA_NUM_CTX=$CTX AUTO_ADJUST_CONTEXT=false
 export MAX_TOKENS_PER_CHUNK=${MAX_TOKENS_PER_CHUNK:-800}
 export PARALLEL_TRANSLATIONS=1 REQUEST_TIMEOUT=900 DEBUG_MODE=false
 
-# Nginx access control: web, API and WebSocket traffic all require Basic Auth.
-printf '%s\n' "$EPUB_PASSWORD" | htpasswd -i -c -B /etc/nginx/.epub-users "$EPUB_USERNAME" >/dev/null
-chown root:www-data /etc/nginx/.epub-users
-chmod 640 /etc/nginx/.epub-users
-# Invariant: nginx worker www-data must be able to read its password file.
-# A mismatch fails Basic Auth with HTTP 500, not 401, after credentials are sent.
-su -s /bin/sh -c 'test -r /etc/nginx/.epub-users' www-data ||
-  die "Nginx worker www-data cannot read the password file."
-unset EPUB_PASSWORD
+# Only HTTP 3000 is public; TTS, Ollama and the translator remain on localhost.
 # RunPod ships its own nginx.conf, which may NOT include conf.d/*.conf.
 # Use a completely separate nginx instance and PID file for the EPUB proxy.
 cat >/etc/nginx/epub-translator.conf <<'NGINX'
-# Workers must be in the group allowed to read /etc/nginx/.epub-users.
-# Without this directive, Nginx defaults to 'nobody' and password login
-# can return HTTP 500 although unauthenticated requests return HTTP 401.
 user www-data;
 worker_processes 1;
 pid /run/epub-translator-nginx.pid;
@@ -175,8 +165,15 @@ http {
         listen 3000;
         server_name _;
         client_max_body_size 150m;
-        auth_basic "EPUB Translator";
-        auth_basic_user_file /etc/nginx/.epub-users;
+        location /audiobook/ {
+            proxy_pass http://127.0.0.1:5100/audiobook/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_read_timeout 900s;
+            proxy_send_timeout 900s;
+            proxy_buffering off;
+        }
         location / {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
@@ -203,13 +200,54 @@ for _ in $(seq 1 90); do
 done
 ((ready == 1)) || die "Translation app failed healthcheck."
 
+# Install audiobook separately; no modification to pinned TranslateBooksWithLLMs.
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  DEPLOY_DIR=$BASE/deployment
+  if [[ ! -d "$DEPLOY_DIR/.git" ]]; then
+    [[ ! -e "$DEPLOY_DIR" ]] || die "$DEPLOY_DIR is not a git checkout"
+    git clone -q https://github.com/thomasasen/epub-translator.git "$DEPLOY_DIR"
+  fi
+  git -C "$DEPLOY_DIR" fetch -q --depth 1 origin "$DEPLOY_REF"
+  git -C "$DEPLOY_DIR" checkout -q --detach FETCH_HEAD
+  if [[ ! -x "$BASE/tts-venv/bin/python" ]]; then
+    python3 -m venv --system-site-packages "$BASE/tts-venv"
+  fi
+  TTS_REQ_SHA=$(sha256sum "$DEPLOY_DIR/audiobook/requirements.txt" | cut -d" " -f1)
+  if [[ ! -f "$BASE/tts-venv/.requirements-sha" ]] || [[ "$(< "$BASE/tts-venv/.requirements-sha")" != "$TTS_REQ_SHA" ]]; then
+    log "Installing audiobook dependencies ... "
+    "$BASE/tts-venv/bin/python" -m pip install -r "$DEPLOY_DIR/audiobook/requirements.txt" >"$LOG/tts-pip.log" 2>&1 ||
+      { tail -n 60 "$LOG/tts-pip.log" >&2; die "TTS pip install failed"; }
+    printf "%s\n" "$TTS_REQ_SHA" >"$BASE/tts-venv/.requirements-sha"
+  fi
+  mkdir -p "$BASE/audiobooks" "$BASE/hf-cache"
+  export AUDIOBOOK_ROOT="$BASE/audiobooks"
+  export AUDIOBOOK_TRANSLATED="$BASE/translated_files"
+  export HF_HOME="$BASE/hf-cache"
+  export PYTHONPATH="$DEPLOY_DIR"
+  "$BASE/tts-venv/bin/python" -m uvicorn audiobook.server:app --host 127.0.0.1 --port 5100 >"$LOG/audiobook.log" 2>&1 &
+  PID_TTS=$!
+  ready=0
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 2 http://127.0.0.1:5100/audiobook/health >/dev/null; then ready=1; break; fi
+    kill -0 "$PID_TTS" 2>/dev/null || { tail -n 50 "$LOG/audiobook.log" >&2; die "Audiobook service crashed"; }
+    sleep 2
+  done
+  ((ready == 1)) || die "Audiobook service timeout"
+fi
 nginx -c /etc/nginx/epub-translator.conf -g 'daemon off;' >"$LOG/nginx.log" 2>&1 &
 PID_WEB=$!
 sleep 2
 kill -0 "$PID_WEB" 2>/dev/null || die "nginx crashed."
 CODE=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
-[[ "$CODE" == 401 ]] || die "Auth failure: expected 401 without password, got $CODE."
-log "READY: RunPod Connect -> HTTP port 3000; log in as $EPUB_USERNAME"
-log "Never expose internal ports 5000 or 11434. Logs: $LOG"
-wait -n "$PID_WEB" "$PID_APP" "$PID_OLLAMA" || true
+[[ "$CODE" == 200 ]] || die "Proxy failure: expected HTTP 200, got $CODE"
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  curl -fsS --max-time 5 http://127.0.0.1:3000/audiobook/health >/dev/null || die "Audiobook proxy failed"
+fi
+log "READY: RunPod Connect -> HTTP port 3000; no extra password"
+log "Do not expose internal ports 5000, 5100 or 11434. Logs: $LOG"
+if [[ "$AUDIOBOOK_ENABLED" == 1 ]]; then
+  wait -n "$PID_WEB" "$PID_TTS" "$PID_APP" "$PID_OLLAMA" || true
+else
+  wait -n "$PID_WEB" "$PID_APP" "$PID_OLLAMA" || true
+fi
 die "A service terminated unexpectedly; check $LOG"
