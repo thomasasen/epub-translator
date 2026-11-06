@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .core import safe_path
 from .engine import MODEL_ID, VOICES
 from .pipeline import (ROOT, TRANSLATED, STOP_EVENT, CANCEL_EVENT, ACTIVE_LOCK, approve, configure,
-                       create_book, load, project_path, quality, synthesize, make_export)
+                       create_book, load, project_path, quality, synthesize, make_export, preview_term)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 CURRENT = None
@@ -191,6 +191,14 @@ def export(book_id: str):
     finally:
         ACTIVE_LOCK.release()
 
+@app.post("/audiobook/api/books/{book_id}/term-preview")
+def term_preview(book_id: str, request: dict):
+    try:
+        token = preview_term(book_id, request.get("phrase", ""))
+        return {"token": token}
+    except (ValueError, OSError, RuntimeError) as exc:
+        raise bad(exc)
+
 @app.get("/audiobook/api/books/{book_id}/quality")
 def report(book_id: str):
     try:
@@ -200,13 +208,15 @@ def report(book_id: str):
 
 
 @app.get("/audiobook/api/books/{book_id}/download/{kind}")
-def download(book_id: str, kind: str, chapter: int | None = None):
+def download(book_id: str, kind: str, chapter: int | None = None, token: str | None = None):
     try:
         folder = project_path(book_id)
         if kind == "m4b":
             path = folder / "book.m4b"
         elif kind == "preview":
             path = folder / "preview.mp3"
+        elif kind == "term" and token is not None and re.fullmatch(r"[a-f0-9]{16}", token):
+            path = safe_path(folder, f"terms/{token}.mp3")
         elif kind == "quality":
             path = folder / "quality.json"
             if not path.is_file():
