@@ -112,6 +112,8 @@ def checked_config(new: dict) -> dict:
         raise ValueError("Geschwindigkeit 0,8..1,2")
     if not (120 <= int(cfg["max_chars"]) <= 1200):
         raise ValueError("Segmentlänge 120..1200")
+    if cfg["quality"] == "careful":
+        cfg["max_chars"] = min(int(cfg["max_chars"]), 300)
     if len(cfg["instruction"]) > 500 or not isinstance(cfg["seed"], int):
         raise ValueError("Ungültige Sprachparameter")
     cfg["captions"] = bool(cfg["captions"])
