@@ -193,13 +193,20 @@ def apply_glossary(text: str, glossary: dict[str, str]) -> str:
     return result
 
 
+def normalize_spoken(text: str) -> str:
+    """Nur eindeutige Symbole aussprechen; Zahlenwerte nicht umrechnen."""
+    text = re.sub(r"(?<=\\d)\\s*%", " Prozent", text)
+    text = re.sub(r"(?<=\\d)\\s*€", " Euro", text)
+    return text
+
+
 def segments(blocks: list[dict], glossary: dict[str, str], max_chars: int = 400) -> list[dict]:
     if not 120 <= max_chars <= 1200:
         raise ValueError("Segmentlänge muss 120..1200 Zeichen betragen")
     output = []
     for block in blocks:
         original = block["text"]
-        spoken = apply_glossary(original, glossary)
+        spoken = normalize_spoken(apply_glossary(original, glossary))
         sentences = _SENTENCES.split(spoken)
         current = ""
         for s in sentences:
