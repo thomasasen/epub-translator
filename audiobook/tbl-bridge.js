@@ -51,7 +51,7 @@ export function enhanceTtsModal(filename, filepath) {
     if (!modal || !provider || document.getElementById('ttsModalQwenOptions')) return;
 
     const epub = typeof filename === 'string' && filename.toLowerCase().endsWith('.epub');
-    const option = el('option', { value: 'qwen-local' }, 'Qwen3-TTS (lokale GPU · deutsches Fachbuch)');
+    const option = el('option', { value: 'qwen-local' }, 'Deutsche Hörbuchstimme (lokale GPU)');
     option.disabled = !epub;
     provider.prepend(option);
 
@@ -64,12 +64,43 @@ export function enhanceTtsModal(filename, filepath) {
     const section = el('div', { id: 'ttsModalQwenOptions', style: 'display:none; padding: 14px 0;' });
     section.append(el('p', { style: 'font-size:13px; color:#aab7c7;' },
         'Lokal, deutsch und für Fachbücher optimiert. Vor der Vollproduktion ist eine Hörprobe mit ausdrücklicher Freigabe erforderlich.'));
-    const voiceField = el('div', { className: 'form-group' });
+    const engineField = el('div', { className: 'form-group' });
+    engineField.append(el('label', { for: 'ttsModalGermanEngine' }, 'Deutsche TTS-Stimme'));
+    const engine = el('select', { id: 'ttsModalGermanEngine', className: 'form-control' });
+    addChoice(engine, 'qwen-base-german', 'Thorsten (Qwen3 Base · Hochdeutsch)', true);
+    addChoice(engine, 'cosyvoice-thorsten', 'Thorsten (CosyVoice3 · Hochdeutsch)', false);
+    addChoice(engine, 'qwen-customvoice', 'Andere Qwen-Stimmen (fremdsprachiger Akzent möglich)', false);
+    const cosyOption = Array.from(engine.options).find(o => o.value === 'cosyvoice-thorsten');
+    cosyOption.disabled = true;
+    engineField.append(engine);
+    section.append(engineField);
+    const voiceHint = el('p', { id: 'ttsModalGermanHint', style: 'font-size:12px; color:#aab7c7;' },
+        'Die deutsche Thorsten-Referenz (CC0) wird beim ersten Hörtest automatisch geladen. Kein englischer Ryan-Akzent als Vorgabe.');
+    section.append(voiceHint);
+
+    const voiceField = el('div', { id: 'ttsModalQwenVoiceField', className: 'form-group',
+        style: 'display:none;' });
     voiceField.append(el('label', { for: 'ttsModalQwenVoice' }, 'Sprecherstimme'));
     const voice = el('select', { id: 'ttsModalQwenVoice', className: 'form-control' });
     VOICES.forEach(name => addChoice(voice, name, name, name === 'Ryan'));
     voiceField.append(voice);
     section.append(voiceField);
+    engine.addEventListener('change', () => {
+        const legacy = engine.value === 'qwen-customvoice';
+        voiceField.style.display = legacy ? 'block' : 'none';
+        voiceHint.textContent = legacy ?
+            'Diese Stimmen sind nicht deutsch-muttersprachlich; ein Akzent ist möglich.' :
+            engine.value === 'cosyvoice-thorsten' ?
+            'Deutsches Thorsten-CosyVoice3-Modell; der zusätzliche lokale Dienst muss laufen.' :
+            'Echte deutsche Thorsten-Referenz (CC0), Qwen3 Base Voice Cloning. Download beim ersten Start.';
+    });
+    request('/capabilities').then(data => {
+        const available = data.engines?.find(x => x.id === 'cosyvoice-thorsten')?.available;
+        cosyOption.disabled = !available;
+        cosyOption.textContent = available ?
+            'Thorsten (CosyVoice3 · Hochdeutsch)' :
+            'Thorsten (CosyVoice3 · Dienst nicht gestartet)';
+    }).catch(() => { cosyOption.disabled = true; });
 
     const speedField = el('div', { className: 'form-group' });
     speedField.append(el('label', { for: 'ttsModalQwenSpeed' }, 'Sprechtempo'));
@@ -115,7 +146,7 @@ export async function generateQwenFromTbl({ filename, modal, generateBtn }) {
     const download = document.getElementById('ttsModalQwenDownload');
     const studio = document.getElementById('ttsModalQwenStudio');
     if (!filename.toLowerCase().endsWith('.epub')) {
-        setNotice(notice, 'Qwen3-TTS unterstützt in dieser Integration nur EPUB-Dateien.', true);
+        setNotice(notice, 'Deutsche TTS-Stimmen unterstützen in dieser Integration nur EPUB-Dateien.', true);
         return;
     }
     section.style.display = 'block';
@@ -188,9 +219,13 @@ export async function generateQwenFromTbl({ filename, modal, generateBtn }) {
         const project = await request('/import-translated', 'POST', { name: filename });
         bookId = project.id;
         studio.href = '/audiobook/?book=' + encodeURIComponent(bookId);
-        const speaker = document.getElementById('ttsModalQwenVoice').value;
+        const backend = document.getElementById('ttsModalGermanEngine').value;
+        const speaker = backend === 'qwen-customvoice' ?
+            document.getElementById('ttsModalQwenVoice').value : 'Thorsten';
         const speed = Number(document.getElementById('ttsModalQwenSpeed').value);
-        await request('/books/' + bookId + '/config', 'PUT', { settings: { speaker, speed } });
+        await request('/books/' + bookId + '/config', 'PUT', {
+            settings: { backend, speaker, speed }
+        });
         await request('/books/' + bookId + '/run', 'POST', { preview: true });
         generateBtn.textContent = 'Sprachprobe läuft …';
         timer = window.setInterval(update, 2000);
